@@ -1,5 +1,22 @@
 @import 'antd/dist/reset.css';
 
+:root {
+  color-scheme: light;
+  --app-bg: linear-gradient(180deg, #f3f7ff 0%, #f6f8fc 52%, #f7f7fb 100%);
+  --app-text: #1f1f1f;
+  --surface-1: rgba(255, 255, 255, 0.92);
+  --surface-2: rgba(255, 255, 255, 0.84);
+  --surface-border: rgba(26, 63, 126, 0.14);
+  --surface-shadow: 0 10px 26px rgba(26, 63, 126, 0.08);
+  --hero-bg: linear-gradient(118deg, #ffffff 0%, #f4f8ff 45%, #eef4ff 100%);
+  --hero-border: rgba(83, 125, 198, 0.22);
+  --hero-shadow: 0 14px 34px rgba(60, 103, 182, 0.12);
+  --muted-text: #667085;
+  --motion-ios: cubic-bezier(0.22, 1, 0.36, 1);
+  --focus-ring: 0 0 0 2px rgba(10, 132, 255, 0.26), 0 0 0 6px rgba(10, 132, 255, 0.08);
+  --focus-inner: inset 0 0 0 1px rgba(10, 132, 255, 0.22);
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -7,8 +24,9 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: linear-gradient(180deg, #f5f8ff 0%, #f7f7fb 100%);
-  color: #1f1f1f;
+  background: var(--app-bg);
+  color: var(--app-text);
+  transition: background 0.25s ease, color 0.25s ease;
 }
 
 #root {
@@ -36,34 +54,222 @@ code {
 }
 
 .app-root.theme-dark {
-  background: radial-gradient(1200px 600px at 20% -10%, #1e2a44 0%, #121826 45%, #0f141f 100%);
-  color: #e8edf7;
+  color-scheme: dark;
+  --app-bg: radial-gradient(1200px 700px at 20% -10%, #223352 0%, #141d2d 42%, #0d131f 100%);
+  --app-text: #edf2ff;
+  --surface-1: rgba(20, 30, 46, 0.82);
+  --surface-2: rgba(21, 30, 44, 0.72);
+  --surface-border: rgba(132, 170, 255, 0.2);
+  --surface-shadow: 0 14px 30px rgba(0, 0, 0, 0.34);
+  --hero-bg: linear-gradient(125deg, rgba(32, 47, 74, 0.9) 0%, rgba(27, 40, 63, 0.9) 45%, rgba(20, 31, 51, 0.95) 100%);
+  --hero-border: rgba(124, 167, 255, 0.28);
+  --hero-shadow: 0 16px 34px rgba(0, 0, 0, 0.38);
+  --muted-text: #aebbd5;
+  --focus-ring: 0 0 0 2px rgba(120, 174, 255, 0.36), 0 0 0 6px rgba(120, 174, 255, 0.14);
+  --focus-inner: inset 0 0 0 1px rgba(120, 174, 255, 0.3);
+
+  background: var(--app-bg);
+  color: var(--app-text);
 }
 
 .app-header {
   position: sticky;
   top: 0;
   z-index: 10;
-  backdrop-filter: saturate(180%) blur(8px);
+  backdrop-filter: saturate(185%) blur(14px);
+  border-bottom: 1px solid var(--surface-border);
+  transition: border-color 0.25s ease;
+}
+
+.app-header .ant-space {
+  justify-content: flex-start !important;
+}
+
+.app-header .ant-menu {
+  margin-right: auto;
+}
+
+.app-header-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  position: relative;
+}
+
+.app-header-left {
+  min-width: 280px;
+}
+
+.app-header-center {
+  flex: 1;
+  min-width: 420px;
+}
+
+.app-header-center.title-balanced {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  gap: 12px;
+}
+
+.app-center-menu {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-center-menu-left .ant-menu-overflow {
+  justify-content: flex-end;
+}
+
+.app-center-menu-right .ant-menu-overflow {
+  justify-content: flex-start;
+}
+
+.app-header-right {
+  margin-left: auto;
+}
+
+.app-title {
+  white-space: nowrap;
+}
+
+.app-header-row.title-centered .app-title {
+  opacity: 0;
+  width: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.app-title-centered {
+  position: relative;
+  pointer-events: none;
+  letter-spacing: 0.2px;
+  font-weight: 600;
+  z-index: 1;
+  padding: 0 6px;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28);
+  transition: opacity 0.22s var(--motion-ios);
+  white-space: nowrap;
+  justify-self: center;
+  min-width: 220px;
+  text-align: center;
+}
+
+.app-header-row.title-centered .app-header-center {
+  min-width: 0;
+}
+
+.app-header-row.title-centered .app-header-right {
+  min-width: max-content;
+}
+
+.app-root.theme-dark .app-title-centered {
+  text-shadow: 0 1px 2px rgba(4, 10, 18, 0.55);
+}
+
+.mac-traffic-lights {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 10px;
+}
+
+.mac-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.mac-dot.red {
+  background: #ff5f57;
+}
+
+.mac-dot.yellow {
+  background: #febc2e;
+}
+
+.mac-dot.green {
+  background: #28c840;
+}
+
+.app-root.theme-dark .mac-dot {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14), 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.mac-command-drawer .ant-drawer-content {
+  background: rgba(244, 248, 255, 0.76);
+  backdrop-filter: blur(18px) saturate(165%);
+  border-left: 1px solid rgba(95, 132, 203, 0.22);
+}
+
+.app-root.theme-dark .mac-command-drawer .ant-drawer-content {
+  background: rgba(17, 26, 40, 0.76);
+  border-left: 1px solid rgba(130, 172, 255, 0.24);
+}
+
+.kbd-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 0 8px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #5b6475;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(132, 154, 198, 0.34);
+}
+
+.kbd-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  min-width: 30px;
+  height: 20px;
+  border-radius: 5px;
+  font-size: 10px;
+  color: #5b6475;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(132, 154, 198, 0.34);
+}
+
+.app-root.theme-dark .kbd-inline {
+  color: #d0dcf5;
+  background: rgba(25, 35, 53, 0.8);
+  border: 1px solid rgba(130, 168, 237, 0.34);
+}
+
+.app-root.theme-dark .kbd-hint {
+  color: #c8d4ee;
+  background: rgba(26, 36, 54, 0.72);
+  border: 1px solid rgba(131, 168, 237, 0.34);
 }
 
 .page-hero-card {
-  border-radius: 12px;
-  border: 1px solid #e6ecff;
-  box-shadow: 0 8px 24px rgba(36, 89, 166, 0.08);
-  background: linear-gradient(120deg, #ffffff 0%, #f7faff 100%);
+  border-radius: 14px;
+  border: 1px solid var(--hero-border);
+  box-shadow: var(--hero-shadow);
+  background: var(--hero-bg);
+  transition: border-color 0.3s var(--motion-ios), box-shadow 0.3s var(--motion-ios), background 0.3s var(--motion-ios);
 }
 
 .soft-card {
-  border-radius: 12px;
-  border: 1px solid #e8ecf4;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  border-radius: 14px;
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--surface-shadow);
+  background: var(--surface-1);
+  backdrop-filter: blur(8px);
+  transition: transform 0.24s var(--motion-ios), box-shadow 0.24s var(--motion-ios), border-color 0.24s var(--motion-ios);
 }
 
 .soft-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 24px rgba(14, 30, 65, 0.1);
+  box-shadow: 0 14px 28px rgba(14, 30, 65, 0.16);
 }
 
 .toolbar-wrap {
@@ -89,10 +295,10 @@ code {
   z-index: 8;
   padding: 8px 10px;
   border-radius: 10px;
-  border: 1px solid #dce6ff;
-  background: rgba(255, 255, 255, 0.86);
-  backdrop-filter: blur(8px);
-  box-shadow: 0 6px 16px rgba(24, 72, 152, 0.08);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-2);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 18px rgba(24, 72, 152, 0.12);
 }
 
 .section-nav .ant-btn-primary {
@@ -104,18 +310,19 @@ code {
   top: 122px;
   z-index: 7;
   padding: 10px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid #e6ebf5;
+  border-radius: 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--surface-border);
+  backdrop-filter: blur(12px);
 }
 
 .hotkey-hint {
-  color: #6b7280;
+  color: var(--muted-text);
   font-size: 12px;
 }
 
 .fade-in {
-  animation: fade-in-up 0.22s ease;
+  animation: fade-in-up 0.26s var(--motion-ios);
 }
 
 @keyframes fade-in-up {
@@ -130,10 +337,116 @@ code {
 }
 
 .sql-editor {
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--surface-border);
   border-radius: 10px;
   overflow: hidden;
-  box-shadow: inset 0 0 0 1px rgba(24, 144, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(24, 144, 255, 0.06);
+}
+
+.ant-btn {
+  transition: transform 0.2s var(--motion-ios), box-shadow 0.2s var(--motion-ios), border-color 0.2s var(--motion-ios), background-color 0.2s var(--motion-ios), color 0.2s var(--motion-ios);
+}
+
+.ant-btn:active {
+  transform: scale(0.98);
+}
+
+.ant-btn-primary {
+  box-shadow: 0 6px 14px rgba(10, 132, 255, 0.2);
+}
+
+.ant-btn-primary:hover {
+  box-shadow: 0 9px 18px rgba(10, 132, 255, 0.28);
+}
+
+.ant-menu-horizontal > .ant-menu-item,
+.ant-menu-horizontal > .ant-menu-submenu {
+  transition: color 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.ant-menu-horizontal > .ant-menu-item:hover,
+.ant-menu-horizontal > .ant-menu-submenu:hover {
+  background-color: rgba(22, 119, 255, 0.08) !important;
+  border-radius: 8px;
+  transform: translateY(-1px);
+}
+
+.app-header-row.title-centered .ant-menu-horizontal > .ant-menu-item,
+.app-header-row.title-centered .ant-menu-horizontal > .ant-menu-submenu {
+  border-radius: 999px !important;
+  border: 1px solid transparent;
+  padding-inline: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.app-header-row.title-centered .ant-menu-horizontal > .ant-menu-item:hover:not(.ant-menu-item-selected),
+.app-header-row.title-centered .ant-menu-horizontal > .ant-menu-submenu:hover:not(.ant-menu-submenu-selected) {
+  background: rgba(22, 119, 255, 0.04) !important;
+  border-color: rgba(22, 119, 255, 0.1) !important;
+  color: #2f63b4 !important;
+  box-shadow: none;
+  transform: translateY(0);
+}
+
+.ant-menu-horizontal > .ant-menu-item::after,
+.ant-menu-horizontal > .ant-menu-submenu::after {
+  display: none !important;
+}
+
+.app-header-row.title-centered .ant-menu-horizontal > .ant-menu-item-selected,
+.app-header-row.title-centered .ant-menu-horizontal > .ant-menu-submenu-selected {
+  background: rgba(22, 119, 255, 0.08) !important;
+  border: 1px solid rgba(22, 119, 255, 0.22) !important;
+  border-radius: 999px !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32);
+  font-weight: 600;
+  letter-spacing: 0.015em;
+  color: #1f4f9f !important;
+}
+
+.app-root.theme-dark .app-header-row.title-centered .ant-menu-horizontal > .ant-menu-item-selected,
+.app-root.theme-dark .app-header-row.title-centered .ant-menu-horizontal > .ant-menu-submenu-selected {
+  background: rgba(126, 170, 255, 0.14) !important;
+  border: 1px solid rgba(145, 184, 255, 0.32) !important;
+  box-shadow: inset 0 0 0 1px rgba(188, 214, 255, 0.2);
+  color: #bdd5ff !important;
+}
+
+.app-root.theme-dark .app-header-row.title-centered .ant-menu-horizontal > .ant-menu-item:hover:not(.ant-menu-item-selected),
+.app-root.theme-dark .app-header-row.title-centered .ant-menu-horizontal > .ant-menu-submenu:hover:not(.ant-menu-submenu-selected) {
+  background: rgba(126, 170, 255, 0.06) !important;
+  border-color: rgba(145, 184, 255, 0.16) !important;
+  color: #d7e6ff !important;
+  box-shadow: none;
+}
+
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select-selector,
+.ant-segmented {
+  transition: border-color 0.22s var(--motion-ios), box-shadow 0.22s var(--motion-ios), background-color 0.22s var(--motion-ios);
+}
+
+.ant-input:focus,
+.ant-input-focused,
+.ant-input-affix-wrapper:focus,
+.ant-input-affix-wrapper-focused,
+.ant-select-focused .ant-select-selector,
+.ant-segmented:focus-within {
+  border-color: rgba(10, 132, 255, 0.68) !important;
+  box-shadow: var(--focus-ring), var(--focus-inner) !important;
+}
+
+.app-root.theme-dark .ant-input,
+.app-root.theme-dark .ant-input-affix-wrapper,
+.app-root.theme-dark .ant-select-selector {
+  background: rgba(17, 25, 39, 0.74) !important;
+  border-color: rgba(134, 162, 217, 0.28) !important;
+}
+
+.app-root.theme-dark .ant-segmented {
+  background: rgba(22, 31, 48, 0.74);
 }
 
 .entity-list {
@@ -170,14 +483,18 @@ code {
 }
 
 .diagram-container {
-  background: #fff;
-  border: 1px solid #d9d9d9;
+  background: var(--surface-1);
+  border: 1px solid var(--surface-border);
   border-radius: 10px;
   padding: 24px;
   min-height: 500px;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.app-root.theme-dark .diagram-container svg {
+  filter: saturate(0.94) contrast(1.03);
 }
 
 .export-buttons {

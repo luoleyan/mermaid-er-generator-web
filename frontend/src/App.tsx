@@ -16,7 +16,8 @@ import {
   Switch,
   theme as antdTheme,
   Modal,
-  List
+  List,
+  Drawer
 } from 'antd'
 import {
   CodeOutlined,
@@ -40,6 +41,18 @@ import { Project } from './types'
 const { Header, Content } = Layout
 const { Title, Paragraph } = Typography
 const { TextArea } = Input
+
+const HEADER_COMPACT_STEPS = {
+  hideAboutAtLevel: 1,
+  hideDrawerAtLevel: 2,
+  hideShortcutAtLevel: 3,
+  maxLevel: 3,
+  relaxThresholdByLevel: {
+    1: 88,
+    2: 136,
+    3: 102
+  } as Record<number, number>
+} as const
 
 const WorkspacePage: React.FC = () => (
   <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -183,9 +196,16 @@ const App: React.FC = () => {
     return stored === 'compact' ? 'compact' : 'comfort'
   })
   const [commandOpen, setCommandOpen] = React.useState(false)
+  const [commandDrawerOpen, setCommandDrawerOpen] = React.useState(false)
   const [shortcutOpen, setShortcutOpen] = React.useState(false)
   const [commandKeyword, setCommandKeyword] = React.useState('')
   const [activeCommandIndex, setActiveCommandIndex] = React.useState(0)
+  const [drawerGroupFocus, setDrawerGroupFocus] = React.useState<'导航' | '动作'>('导航')
+  const [titleCentered, setTitleCentered] = React.useState<boolean>(() => localStorage.getItem('ui-title-centered') === '1')
+  const [headerScrollY, setHeaderScrollY] = React.useState(0)
+  const [smoothedTitleOpacity, setSmoothedTitleOpacity] = React.useState(1)
+  const [adaptiveCompactLevel, setAdaptiveCompactLevel] = React.useState(0)
+  const headerRowRef = React.useRef<HTMLDivElement | null>(null)
   const [mruCommandIds, setMruCommandIds] = React.useState<string[]>(() => {
     try {
       const raw = localStorage.getItem('command-mru')
@@ -203,16 +223,27 @@ const App: React.FC = () => {
     localStorage.setItem('ui-density', density)
   }, [density])
 
+  React.useEffect(() => {
+    localStorage.setItem('ui-title-centered', titleCentered ? '1' : '0')
+  }, [titleCentered])
+
+  React.useEffect(() => {
+    const onScroll = () => setHeaderScrollY(window.scrollY || 0)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
   const commandItems = React.useMemo(
     () => [
-      { id: 'goto-home', group: '导航', label: '首页', hint: '跳转到首页', run: () => navigate('/home') },
-      { id: 'goto-workspace', group: '导航', label: 'ER 工作台', hint: '跳转到 ER 工作台', run: () => navigate('/workspace') },
-      { id: 'goto-mermaid-workspace', group: '导航', label: 'Mermaid 工作台', hint: '跳转到 Mermaid 工作台', run: () => navigate('/mermaid-workspace') },
-      { id: 'goto-mermaid-preview', group: '导航', label: 'Mermaid 预览', hint: '跳转到 Mermaid 预览', run: () => navigate('/mermaid-preview') },
-      { id: 'goto-projects', group: '导航', label: '项目管理', hint: '跳转到项目管理', run: () => navigate('/projects') },
-      { id: 'action-generate-sql', group: '动作', label: 'ER 工作台生成 ER 图', hint: '触发 SQL 工作台生成动作', run: () => window.dispatchEvent(new CustomEvent('app:generate-sql-diagram')) },
-      { id: 'action-transform-mermaid', group: '动作', label: 'Mermaid 工作台解析并生成', hint: '触发 Mermaid 工作台转换动作', run: () => window.dispatchEvent(new CustomEvent('app:transform-mermaid-workspace')) },
-      { id: 'action-render-preview', group: '动作', label: 'Mermaid 预览渲染', hint: '触发 Mermaid 预览渲染动作', run: () => window.dispatchEvent(new CustomEvent('app:render-mermaid-preview')) }
+      { id: 'goto-home', group: '导航', label: '首页', hint: '跳转到首页', shortcut: '↵', run: () => navigate('/home') },
+      { id: 'goto-workspace', group: '导航', label: 'ER 工作台', hint: '跳转到 ER 工作台', shortcut: '↵', run: () => navigate('/workspace') },
+      { id: 'goto-mermaid-workspace', group: '导航', label: 'Mermaid 工作台', hint: '跳转到 Mermaid 工作台', shortcut: '↵', run: () => navigate('/mermaid-workspace') },
+      { id: 'goto-mermaid-preview', group: '导航', label: 'Mermaid 预览', hint: '跳转到 Mermaid 预览', shortcut: '↵', run: () => navigate('/mermaid-preview') },
+      { id: 'goto-projects', group: '导航', label: '项目管理', hint: '跳转到项目管理', shortcut: '↵', run: () => navigate('/projects') },
+      { id: 'action-generate-sql', group: '动作', label: 'ER 工作台生成 ER 图', hint: '触发 SQL 工作台生成动作', shortcut: '⌘↵', run: () => window.dispatchEvent(new CustomEvent('app:generate-sql-diagram')) },
+      { id: 'action-transform-mermaid', group: '动作', label: 'Mermaid 工作台解析并生成', hint: '触发 Mermaid 工作台转换动作', shortcut: '⌘↵', run: () => window.dispatchEvent(new CustomEvent('app:transform-mermaid-workspace')) },
+      { id: 'action-render-preview', group: '动作', label: 'Mermaid 预览渲染', hint: '触发 Mermaid 预览渲染动作', shortcut: '⌘↵', run: () => window.dispatchEvent(new CustomEvent('app:render-mermaid-preview')) }
     ],
     [navigate]
   )
@@ -315,7 +346,17 @@ const App: React.FC = () => {
     setActiveCommandIndex(0)
   }
 
+  const closeCommandDrawer = () => {
+    setCommandDrawerOpen(false)
+    setCommandKeyword('')
+    setActiveCommandIndex(0)
+  }
+
   const flatCommands = React.useMemo(() => [...groupedCommands.导航, ...groupedCommands.动作], [groupedCommands])
+  const drawerCommands = React.useMemo(
+    () => groupedCommands[drawerGroupFocus],
+    [groupedCommands, drawerGroupFocus]
+  )
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -351,9 +392,70 @@ const App: React.FC = () => {
     { key: '/about', icon: <InfoCircleOutlined />, label: '关于' }
   ]
 
-  const selectedKey = menuItems.some((item) => item.key === location.pathname)
+  const isAboutHidden = titleCentered && adaptiveCompactLevel >= HEADER_COMPACT_STEPS.hideAboutAtLevel
+  const isDrawerHidden = titleCentered && adaptiveCompactLevel >= HEADER_COMPACT_STEPS.hideDrawerAtLevel
+  const isShortcutHidden = titleCentered && adaptiveCompactLevel >= HEADER_COMPACT_STEPS.hideShortcutAtLevel
+  const responsiveMenuItems = isAboutHidden
+    ? menuItems.filter((item) => item.key !== '/about')
+    : menuItems
+
+  const selectedKey = responsiveMenuItems.some((item) => item.key === location.pathname)
     ? location.pathname
     : '/workspace'
+  const centerSplit = Math.ceil(responsiveMenuItems.length / 2)
+  const leftMenuItems = responsiveMenuItems.slice(0, centerSplit)
+  const rightMenuItems = responsiveMenuItems.slice(centerSplit)
+  const centeredTitleOpacity = Math.max(0.88, 1 - Math.min(headerScrollY, 120) / 120 * 0.12)
+
+  React.useEffect(() => {
+    let rafId = 0
+    const animate = () => {
+      setSmoothedTitleOpacity((prev) => {
+        const next = prev + (centeredTitleOpacity - prev) * 0.16
+        if (Math.abs(centeredTitleOpacity - next) < 0.0015) return centeredTitleOpacity
+        rafId = window.requestAnimationFrame(animate)
+        return next
+      })
+    }
+    rafId = window.requestAnimationFrame(animate)
+    return () => window.cancelAnimationFrame(rafId)
+  }, [centeredTitleOpacity])
+
+  React.useEffect(() => {
+    if (!titleCentered) {
+      if (adaptiveCompactLevel !== 0) setAdaptiveCompactLevel(0)
+      return
+    }
+
+    let rafId = 0
+    const evaluate = () => {
+      const row = headerRowRef.current
+      if (!row) return
+
+      const overflow = row.scrollWidth - row.clientWidth > 2
+      const spare = row.clientWidth - row.scrollWidth
+
+      if (overflow && adaptiveCompactLevel < HEADER_COMPACT_STEPS.maxLevel) {
+        setAdaptiveCompactLevel((prev) => Math.min(prev + 1, HEADER_COMPACT_STEPS.maxLevel))
+        return
+      }
+
+      if (!overflow && adaptiveCompactLevel > 0) {
+        // Hysteresis to avoid jitter when width is near boundary.
+        const relaxThreshold = HEADER_COMPACT_STEPS.relaxThresholdByLevel[adaptiveCompactLevel] ?? 102
+        if (spare > relaxThreshold) {
+          setAdaptiveCompactLevel((prev) => Math.max(prev - 1, 0))
+        }
+      }
+    }
+
+    rafId = window.requestAnimationFrame(evaluate)
+    window.addEventListener('resize', evaluate, { passive: true })
+    return () => {
+      window.cancelAnimationFrame(rafId)
+      window.removeEventListener('resize', evaluate)
+    }
+  }, [titleCentered, adaptiveCompactLevel, location.pathname])
 
   return (
     <ConfigProvider
@@ -366,26 +468,83 @@ const App: React.FC = () => {
     >
     <div className={`app-root ${isDark ? 'theme-dark' : ''} density-${density}`}>
     <Layout style={{ minHeight: '100vh' }}>
-      <Header className="app-header" style={{ background: 'rgba(255,255,255,0.92)', padding: '0 24px', boxShadow: '0 2px 10px rgba(24,48,87,0.08)' }}>
-        <Space style={{ width: '100%', justifyContent: 'space-between' }} align="center">
-          <DatabaseOutlined style={{ fontSize: 24, color: '#1890ff' }} />
-          <Title level={3} style={{ margin: 0, color: '#1890ff' }}>
-            Mermaid ER Generator
-          </Title>
-          <Menu
-            mode="horizontal"
-            selectedKeys={[selectedKey]}
-            items={menuItems}
-            onClick={({ key }) => navigate(key)}
-            style={{ flex: 1, minWidth: 700, marginLeft: 24, borderBottom: 'none' }}
-          />
-          <Space size={10}>
-            <Button icon={<SearchOutlined />} onClick={() => setCommandOpen(true)}>
-              命令面板
+      <Header
+        className="app-header"
+        style={{
+          background: isDark ? 'rgba(16, 24, 38, 0.72)' : 'rgba(255, 255, 255, 0.88)',
+          padding: '0 24px',
+          boxShadow: isDark
+            ? '0 4px 14px rgba(0,0,0,0.32)'
+            : '0 2px 10px rgba(24,48,87,0.08)'
+        }}
+      >
+        <div ref={headerRowRef} className={`app-header-row ${titleCentered ? 'title-centered' : ''}`}>
+          <Space align="center" className="app-header-left">
+            <div className="mac-traffic-lights" aria-hidden>
+              <span className="mac-dot red" />
+              <span className="mac-dot yellow" />
+              <span className="mac-dot green" />
+            </div>
+            <DatabaseOutlined style={{ fontSize: 24, color: '#1890ff' }} />
+            <Title level={3} className="app-title" style={{ margin: 0, color: isDark ? '#8fb8ff' : '#1890ff' }}>
+              Mermaid ER Generator
+            </Title>
+          </Space>
+          <div className={`app-header-center ${titleCentered ? 'title-balanced' : ''}`}>
+          {titleCentered ? (
+            <>
+              <Menu
+                className="app-center-menu app-center-menu-left"
+                mode="horizontal"
+                selectedKeys={[selectedKey]}
+                items={leftMenuItems}
+                onClick={({ key }) => navigate(key)}
+                style={{ minWidth: 0, width: '100%', borderBottom: 'none' }}
+              />
+              <Title
+                level={4}
+                className="app-title-centered"
+                style={{ margin: 0, color: isDark ? '#8fb8ff' : '#2453a6', opacity: smoothedTitleOpacity }}
+              >
+                Mermaid ER Generator
+              </Title>
+              <Menu
+                className="app-center-menu app-center-menu-right"
+                mode="horizontal"
+                selectedKeys={[selectedKey]}
+                items={rightMenuItems}
+                onClick={({ key }) => navigate(key)}
+                style={{ minWidth: 0, width: '100%', borderBottom: 'none' }}
+              />
+            </>
+          ) : (
+            <Menu
+              mode="horizontal"
+              selectedKeys={[selectedKey]}
+              items={menuItems}
+              onClick={({ key }) => navigate(key)}
+              style={{
+                minWidth: 580,
+                width: '100%',
+                borderBottom: 'none'
+              }}
+            />
+          )}
+          </div>
+          <Space size={10} className="app-header-right">
+            <Button icon={<SearchOutlined />} onClick={() => setCommandOpen(true)} className="with-kbd">
+              命令面板 <span className="kbd-inline">⌘K</span>
             </Button>
-            <Button icon={<QuestionCircleOutlined />} onClick={() => setShortcutOpen(true)}>
-              快捷键
-            </Button>
+            {!isDrawerHidden && (
+              <Button icon={<SearchOutlined />} onClick={() => setCommandDrawerOpen(true)}>
+                侧边命令抽屉
+              </Button>
+            )}
+            {!isShortcutHidden && (
+              <Button icon={<QuestionCircleOutlined />} onClick={() => setShortcutOpen(true)} className="with-kbd">
+                快捷键 <span className="kbd-inline">?</span>
+              </Button>
+            )}
             <Segmented
               size="small"
               value={density}
@@ -401,8 +560,14 @@ const App: React.FC = () => {
               checkedChildren={<MoonOutlined />}
               unCheckedChildren={<SunOutlined />}
             />
+            <Switch
+              checked={titleCentered}
+              onChange={setTitleCentered}
+              checkedChildren="居中"
+              unCheckedChildren="左对齐"
+            />
           </Space>
-        </Space>
+        </div>
       </Header>
       <Content style={{ padding: '24px' }}>
         <div className="app-shell">
@@ -515,6 +680,106 @@ const App: React.FC = () => {
         </Typography.Text>
       </Space>
     </Modal>
+    <Drawer
+      title="命令抽屉"
+      placement="right"
+      open={commandDrawerOpen}
+      onClose={closeCommandDrawer}
+      width="52vw"
+      destroyOnClose
+      className="mac-command-drawer"
+    >
+      <Space direction="vertical" style={{ width: '100%' }}>
+        <Segmented
+          value={drawerGroupFocus}
+          onChange={(value) => {
+            setDrawerGroupFocus(value as '导航' | '动作')
+            setActiveCommandIndex(0)
+          }}
+          options={[
+            { label: '导航', value: '导航' },
+            { label: '动作', value: '动作' }
+          ]}
+        />
+        <Input
+          autoFocus
+          placeholder="搜索命令..."
+          value={commandKeyword}
+          onChange={(event) => setCommandKeyword(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              closeCommandDrawer()
+              return
+            }
+            if (event.key === 'ArrowDown') {
+              event.preventDefault()
+              if (drawerCommands.length === 0) return
+              setActiveCommandIndex((prev) => (prev + 1) % drawerCommands.length)
+              return
+            }
+            if (event.key === 'ArrowUp') {
+              event.preventDefault()
+              if (drawerCommands.length === 0) return
+              setActiveCommandIndex((prev) => (prev - 1 + drawerCommands.length) % drawerCommands.length)
+              return
+            }
+            if (event.key === 'Tab') {
+              event.preventDefault()
+              setDrawerGroupFocus((prev) => (prev === '导航' ? '动作' : '导航'))
+              setActiveCommandIndex(0)
+              return
+            }
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              executeCommand(drawerCommands[activeCommandIndex] || drawerCommands[0])
+              closeCommandDrawer()
+            }
+          }}
+        />
+        {drawerCommands.length === 0 ? (
+          <Card size="small">没有匹配命令</Card>
+        ) : (
+          <List
+            size="small"
+            bordered
+            dataSource={drawerCommands}
+            renderItem={(item) => {
+              const index = drawerCommands.findIndex((command) => command.id === item.id)
+              const active = index === activeCommandIndex
+              return (
+                <List.Item
+                  style={{
+                    cursor: 'pointer',
+                    borderRadius: 8,
+                    padding: '9px 12px',
+                    background: active ? 'rgba(22,119,255,0.12)' : 'transparent'
+                  }}
+                  onMouseEnter={() => setActiveCommandIndex(index)}
+                  onClick={() => {
+                    executeCommand(item)
+                    closeCommandDrawer()
+                  }}
+                >
+                  <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start">
+                    <Space direction="vertical" size={0}>
+                      <Typography.Text strong>{highlightText(item.label, commandKeyword)}</Typography.Text>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        {item.group} · {highlightText(item.hint, commandKeyword)}
+                      </Typography.Text>
+                    </Space>
+                    <Typography.Text className="kbd-hint">
+                      {item.shortcut || '↵'}
+                    </Typography.Text>
+                  </Space>
+                </List.Item>
+              )
+            }}
+          />
+        )}
+        <Typography.Text className="hotkey-hint">提示：Tab 切换分组焦点（导航/动作）</Typography.Text>
+      </Space>
+    </Drawer>
     <Modal
       title="快捷键帮助"
       open={shortcutOpen}
