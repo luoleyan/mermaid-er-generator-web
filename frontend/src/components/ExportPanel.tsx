@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Card, Space, Button, Typography, message } from 'antd'
 import { DownloadOutlined, FileImageOutlined, FilePdfOutlined } from '@ant-design/icons'
-import { ExportOptions } from '../types'
+import { ViewMode } from '../types'
 import { exportService } from '../services/api'
 
 const { Title } = Typography
@@ -9,9 +9,16 @@ const { Title } = Typography
 interface ExportPanelProps {
   sql: string
   theme?: string
+  viewMode?: ViewMode
+  chenPinnedEntities?: string[]
 }
 
-const ExportPanel: React.FC<ExportPanelProps> = ({ sql, theme = 'default' }) => {
+const ExportPanel: React.FC<ExportPanelProps> = ({
+  sql,
+  theme = 'default',
+  viewMode = 'classic',
+  chenPinnedEntities = []
+}) => {
   const [loading, setLoading] = useState(false)
 
   const handleExport = async (format: 'png' | 'svg' | 'pdf') => {
@@ -28,17 +35,17 @@ const ExportPanel: React.FC<ExportPanelProps> = ({ sql, theme = 'default' }) => 
 
       switch (format) {
         case 'svg':
-          blob = await exportService.exportSVG(sql, theme)
+          blob = await exportService.exportSVG(sql, theme, viewMode, chenPinnedEntities)
           filename = 'er-diagram.svg'
           mimeType = 'image/svg+xml'
           break
         case 'png':
-          blob = await exportService.exportPNG(sql, theme)
+          blob = await exportService.exportPNG(sql, theme, viewMode, chenPinnedEntities)
           filename = 'er-diagram.png'
           mimeType = 'image/png'
           break
         case 'pdf':
-          blob = await exportService.exportPDF(sql, theme)
+          blob = await exportService.exportPDF(sql, theme, viewMode, chenPinnedEntities)
           filename = 'er-diagram.pdf'
           mimeType = 'application/pdf'
           break

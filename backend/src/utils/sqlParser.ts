@@ -36,6 +36,10 @@ export class SQLParser {
       definitions.push(current.trim());
     }
 
+    const tablePrimaryKeyColumns = this.extractTablePrimaryKeyColumns(definitions);
+    const tableUniqueColumns = this.extractTableUniqueColumns(definitions);
+    const foreignKeys = this.extractInlineAndTableForeignKeys(definitions);
+
     for (const def of definitions) {
       const trimmed = def.trim();
       if (!trimmed) continue;
@@ -65,14 +69,81 @@ export class SQLParser {
           name,
           type,
           nullable: !rest.includes('NOT NULL'),
-          primaryKey: rest.includes('PRIMARY KEY')
+          primaryKey: rest.includes('PRIMARY KEY') || tablePrimaryKeyColumns.has(name),
+          unique: rest.includes('UNIQUE') || tableUniqueColumns.has(name)
         };
+        const defaultValue = this.extractDefaultValue(rest);
+        if (defaultValue !== undefined) {
+          column.defaultValue = defaultValue;
+        }
+
+        const foreignKey = foreignKeys.get(name);
+        if (foreignKey) {
+          column.foreignKey = foreignKey;
+        }
 
         columns.push(column);
       }
     }
     
     return columns;
+  }
+
+  private static extractDefaultValue(definitionTail: string): string | undefined {
+    const defaultMatch = definitionTail.match(/\bDEFAULT\s+(.+?)(?:\s+(?:NOT\s+NULL|NULL|PRIMARY\s+KEY|UNIQUE|REFERENCES|CHECK|CONSTRAINT)\b|$)/i);
+    if (!defaultMatch) return undefined;
+    return defaultMatch[1].trim().replace(/,$/, '');
+  }
+
+  private static extractTablePrimaryKeyColumns(definitions: string[]): Set<string> {
+    const result = new Set<string>();
+    for (const definition of definitions) {
+      const match = definition.match(/^\s*PRIMARY\s+KEY\s*\(([^)]+)\)/i);
+      if (!match) continue;
+      for (const column of match[1].split(',')) {
+        result.add(column.trim().replace(/[`"']/g, ''));
+      }
+    }
+    return result;
+  }
+
+  private static extractTableUniqueColumns(definitions: string[]): Set<string> {
+    const result = new Set<string>();
+    for (const definition of definitions) {
+      const match = definition.match(/^\s*UNIQUE\s*\(([^)]+)\)/i);
+      if (!match) continue;
+      for (const column of match[1].split(',')) {
+        result.add(column.trim().replace(/[`"']/g, ''));
+      }
+    }
+    return result;
+  }
+
+  private static extractInlineAndTableForeignKeys(definitions: string[]): Map<string, { referencedTable: string; referencedColumn: string }> {
+    const map = new Map<string, { referencedTable: string; referencedColumn: string }>();
+
+    for (const definition of definitions) {
+      const trimmed = definition.trim();
+      if (!trimmed) continue;
+
+      const inlineMatch = trimmed.match(/^[`"']?(\w+)[`"']?.*?\bREFERENCES\s+[`"']?(\w+)[`"']?\s*\(\s*[`"']?(\w+)[`"']?\s*\)/i);
+      if (inlineMatch) {
+        map.set(inlineMatch[1], {
+          referencedTable: inlineMatch[2],
+          referencedColumn: inlineMatch[3]
+        });
+      }
+
+      const tableLevelMatch = trimmed.match(/^\s*FOREIGN\s+KEY\s*\(\s*[`"']?(\w+)[`"']?\s*\)\s*REFERENCES\s+[`"']?(\w+)[`"']?\s*\(\s*[`"']?(\w+)[`"']?\s*\)/i);
+      if (tableLevelMatch) {
+        map.set(tableLevelMatch[1], {
+          referencedTable: tableLevelMatch[2],
+          referencedColumn: tableLevelMatch[3]
+        });
+      }
+    }
+
+    return map;
   }
 
   private static extractRelationships(entities: Entity[], sql: string): Relationship[] {
@@ -101,7 +172,7 @@ export class SQLParser {
       const tableBody = bodyMatch[1];
       
       // Find FOREIGN KEY constraints - use simpler regex without global flag for iteration
-      const fkRegex = /FOREIGN\s+KEY\s*\(\s*(\w+)\s*\)\s*REFERENCES\s+(\w+)\s*\(\s*(\w+)\s*\)/gi;
+      const fkRegex = /FOREIGN\s+KEY\s*\(\s*[`"']?(\w+)[`"']?\s*\)\s*REFERENCES\s+[`"']?(\w+)[`"']?\s*\(\s*[`"']?(\w+)[`"']?\s*\)/gi;
       let fkMatch;
       
       while ((fkMatch = fkRegex.exec(tableBody)) !== null) {
@@ -115,7 +186,8 @@ export class SQLParser {
           to: tableName,  // Current table (child)
           type: 'one-to-many',
           fromColumn: toColumn,
-          toColumn: fromColumn
+          toColumn: fromColumn,
+          name: `${tableName}.${fromColumn} references ${toTable}.${toColumn}`
         };
 
         // Determine relationship type based on primary keys
@@ -126,12 +198,10 @@ export class SQLParser {
           const parentCol = parentEntity.columns.find(c => c.name === toColumn);
           const childCol = childEntity.columns.find(c => c.name === fromColumn);
           
-          if (parentCol?.primaryKey && !childCol?.primaryKey) {
-            relationship.type = 'one-to-many';
-          } else if (!parentCol?.primaryKey && childCol?.primaryKey) {
-            relationship.type = 'many-to-one';
-          } else if (parentCol?.primaryKey && childCol?.primaryKey) {
+          if (parentCol?.primaryKey && (childCol?.primaryKey || childCol?.unique)) {
             relationship.type = 'one-to-one';
+          } else {
+            relationship.type = 'one-to-many';
           }
         }
 

@@ -5,7 +5,7 @@ import { createError } from '../middleware/errorHandler';
 export const exportController = {
   async exportSVG(req: Request, res: Response) {
     try {
-      const { sql, theme = 'default' } = req.body;
+      const { sql, theme = 'default', viewMode = 'classic', chenPinnedEntities = [] } = req.body;
       
       if (!sql) {
         throw createError('SQL is required', 400);
@@ -19,7 +19,7 @@ export const exportController = {
       const svg = await mermaidService.generateDiagram(
         result.entities,
         result.relationships,
-        { theme, securityLevel: 'loose', fontFamily: 'sans-serif' }
+        { theme, securityLevel: 'loose', fontFamily: 'sans-serif', viewMode, chenPinnedEntities }
       );
 
       res.setHeader('Content-Type', 'image/svg+xml');
@@ -42,7 +42,7 @@ export const exportController = {
 
   async exportPNG(req: Request, res: Response) {
     try {
-      const { sql, theme = 'default' } = req.body;
+      const { sql, theme = 'default', viewMode = 'classic', chenPinnedEntities = [] } = req.body;
       
       if (!sql) {
         throw createError('SQL is required', 400);
@@ -53,17 +53,15 @@ export const exportController = {
       const result = SQLParser.parseSQL(sql);
       
       const mermaidService = new MermaidService();
-      const svg = await mermaidService.renderToPNG(
+      const png = await mermaidService.renderToPNG(
         result.entities,
         result.relationships,
-        { theme, securityLevel: 'loose', fontFamily: 'sans-serif' }
+        { theme, securityLevel: 'loose', fontFamily: 'sans-serif', viewMode, chenPinnedEntities }
       );
 
-      // For PNG export, you'd typically use a library like puppeteer
-      // Here we're returning SVG as a placeholder
-      res.setHeader('Content-Type', 'image/svg+xml');
+      res.setHeader('Content-Type', 'image/png');
       res.setHeader('Content-Disposition', 'attachment; filename="er-diagram.png"');
-      res.send(svg);
+      res.send(png);
     } catch (error) {
       if (error instanceof Error && error.message.includes('required')) {
         res.status(400).json({
@@ -81,7 +79,7 @@ export const exportController = {
 
   async exportPDF(req: Request, res: Response) {
     try {
-      const { sql, theme = 'default' } = req.body;
+      const { sql, theme = 'default', viewMode = 'classic', chenPinnedEntities = [] } = req.body;
       
       if (!sql) {
         throw createError('SQL is required', 400);
@@ -92,17 +90,15 @@ export const exportController = {
       const result = SQLParser.parseSQL(sql);
       
       const mermaidService = new MermaidService();
-      const svg = await mermaidService.generateDiagram(
+      const pdf = await mermaidService.renderToPDF(
         result.entities,
         result.relationships,
-        { theme, securityLevel: 'loose', fontFamily: 'sans-serif' }
+        { theme, securityLevel: 'loose', fontFamily: 'sans-serif', viewMode, chenPinnedEntities }
       );
 
-      // For PDF export, you'd typically use a library like puppeteer
-      // Here we're returning SVG as a placeholder
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', 'attachment; filename="er-diagram.pdf"');
-      res.send('PDF export would be implemented here with a library like puppeteer');
+      res.send(pdf);
     } catch (error) {
       if (error instanceof Error && error.message.includes('required')) {
         res.status(400).json({

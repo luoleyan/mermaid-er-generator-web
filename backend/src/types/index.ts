@@ -17,6 +17,8 @@ export interface Column {
   type: string;
   nullable?: boolean;
   primaryKey?: boolean;
+  unique?: boolean;
+  defaultValue?: string;
   foreignKey?: {
     referencedTable: string;
     referencedColumn: string;

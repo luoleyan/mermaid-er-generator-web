@@ -1,9 +1,9 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { Card, Row, Col, Space, Typography, Button, Select, message } from 'antd'
 import { Editor } from '@monaco-editor/react'
 import { SaveOutlined, FolderOpenOutlined } from '@ant-design/icons'
 import { sqlService } from '../services/api'
-import { SQLParseResult } from '../types'
+import { SQLParseResult, ViewMode } from '../types'
 import EntityList from './EntityList'
 import DiagramRenderer from './DiagramRenderer'
 import ExportPanel from './ExportPanel'
@@ -14,6 +14,8 @@ const { Option } = Select
 const SQLInput: React.FC = () => {
   const [sql, setSql] = useState<string>('')
   const [theme, setTheme] = useState<string>('default')
+  const [viewMode, setViewMode] = useState<ViewMode>('classic')
+  const [chenPinnedEntities, setChenPinnedEntities] = useState<string[]>(['USERS', 'ARTICLES'])
   const [parseResult, setParseResult] = useState<SQLParseResult | null>(null)
   const [mermaidCode, setMermaidCode] = useState<string>('')
   const [loading, setLoading] = useState(false)
@@ -45,25 +47,33 @@ const SQLInput: React.FC = () => {
     }
   }
 
-  const handleGenerateDiagram = async () => {
+  const handleGenerateDiagram = async (silent: boolean = false) => {
     if (!sql.trim()) {
-      message.warning('请输入 SQL 语句')
+      if (!silent) {
+        message.warning('请输入 SQL 语句')
+      }
       return
     }
 
     setLoading(true)
     try {
-      const response = await sqlService.generateDiagram(sql, theme)
+      const response = await sqlService.generateDiagram(sql, theme, viewMode, chenPinnedEntities)
       if (response.success && response.data) {
         setMermaidCode(response.data.diagram)
         setParseResult(response.data)
-        message.success('ER 图生成成功')
+        if (!silent) {
+          message.success('ER 图生成成功')
+        }
       } else {
-        message.error(response.error || '生成失败')
+        if (!silent) {
+          message.error(response.error || '生成失败')
+        }
       }
     } catch (error) {
       console.error('Generate error:', error)
-      message.error('生成失败，请重试')
+      if (!silent) {
+        message.error('生成失败，请重试')
+      }
     } finally {
       setLoading(false)
     }
@@ -72,6 +82,18 @@ const SQLInput: React.FC = () => {
   const handleThemeChange = (value: string) => {
     setTheme(value)
   }
+
+  const handleViewModeChange = (value: ViewMode) => {
+    setViewMode(value)
+  }
+
+  useEffect(() => {
+    if (!sql.trim() || !parseResult) {
+      return
+    }
+    void handleGenerateDiagram(true)
+    // Re-generate diagram when mode or Chen anchor list changes.
+  }, [viewMode, chenPinnedEntities])
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto' }}>
@@ -88,6 +110,24 @@ const SQLInput: React.FC = () => {
                     <Option value="forest">森林</Option>
                     <Option value="neutral">中性</Option>
                   </Select>
+                  <Text>视图模式：</Text>
+                  <Select value={viewMode} onChange={handleViewModeChange} style={{ width: 140 }}>
+                    <Option value="classic">经典ER</Option>
+                    <Option value="physical">物理表结构</Option>
+                    <Option value="chen">Chen概念模型</Option>
+                  </Select>
+                  {viewMode === 'chen' && (
+                    <>
+                      <Text>主实体固定名单：</Text>
+                      <Select
+                        mode="tags"
+                        value={chenPinnedEntities}
+                        onChange={(values) => setChenPinnedEntities(values)}
+                        style={{ minWidth: 280 }}
+                        placeholder="输入实体名并回车，如 USERS"
+                      />
+                    </>
+                  )}
                 </Space>
                 <Space>
                   <Button type="primary" icon={<SaveOutlined />} onClick={handleParse}>
@@ -134,7 +174,12 @@ const SQLInput: React.FC = () => {
               <DiagramRenderer code={mermaidCode} theme={theme} />
             </Col>
             <Col span={8}>
-              <ExportPanel sql={sql} theme={theme} />
+              <ExportPanel
+                sql={sql}
+                theme={theme}
+                viewMode={viewMode}
+                chenPinnedEntities={chenPinnedEntities}
+              />
             </Col>
           </Row>
         </>

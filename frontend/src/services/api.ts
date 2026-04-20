@@ -1,7 +1,7 @@
 import axios from 'axios'
-import { APIResponse, SQLParseResult, Project, ExportOptions } from '../types'
+import { APIResponse, SQLParseResult, Project, ViewMode } from '../types'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -22,10 +22,30 @@ export const sqlService = {
     return response.data
   },
 
-  generateDiagram: async (sql: string, theme: string = 'default'): Promise<APIResponse<any>> => {
-    const response = await api.post('/sql/generate', { sql, theme })
+  generateDiagram: async (
+    sql: string,
+    theme: string = 'default',
+    viewMode: ViewMode = 'classic',
+    chenPinnedEntities: string[] = []
+  ): Promise<APIResponse<any>> => {
+    const response = await api.post('/sql/generate', { sql, theme, viewMode, chenPinnedEntities })
     return response.data
   },
+
+  transformPreview: async (
+    code: string,
+    viewMode: ViewMode = 'classic',
+    theme: string = 'default',
+    chenPinnedEntities: string[] = []
+  ): Promise<APIResponse<{ diagramCode: string }>> => {
+    const response = await api.post('/sql/transform-preview', {
+      code,
+      viewMode,
+      theme,
+      chenPinnedEntities
+    })
+    return response.data
+  }
 }
 
 export const projectService = {
@@ -56,22 +76,37 @@ export const projectService = {
 }
 
 export const exportService = {
-  exportSVG: async (sql: string, theme: string = 'default'): Promise<Blob> => {
-    const response = await api.post('/export/svg', { sql, theme }, {
+  exportSVG: async (
+    sql: string,
+    theme: string = 'default',
+    viewMode: ViewMode = 'classic',
+    chenPinnedEntities: string[] = []
+  ): Promise<Blob> => {
+    const response = await api.post('/export/svg', { sql, theme, viewMode, chenPinnedEntities }, {
       responseType: 'blob'
     })
     return response.data
   },
 
-  exportPNG: async (sql: string, theme: string = 'default'): Promise<Blob> => {
-    const response = await api.post('/export/png', { sql, theme }, {
+  exportPNG: async (
+    sql: string,
+    theme: string = 'default',
+    viewMode: ViewMode = 'classic',
+    chenPinnedEntities: string[] = []
+  ): Promise<Blob> => {
+    const response = await api.post('/export/png', { sql, theme, viewMode, chenPinnedEntities }, {
       responseType: 'blob'
     })
     return response.data
   },
 
-  exportPDF: async (sql: string, theme: string = 'default'): Promise<Blob> => {
-    const response = await api.post('/export/pdf', { sql, theme }, {
+  exportPDF: async (
+    sql: string,
+    theme: string = 'default',
+    viewMode: ViewMode = 'classic',
+    chenPinnedEntities: string[] = []
+  ): Promise<Blob> => {
+    const response = await api.post('/export/pdf', { sql, theme, viewMode, chenPinnedEntities }, {
       responseType: 'blob'
     })
     return response.data
