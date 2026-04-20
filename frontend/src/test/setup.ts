@@ -1,26 +1,27 @@
 import React from 'react'
+import { vi } from 'vitest'
 
 // Test setup file
-import '@testing-library/jest-dom'
+import '@testing-library/jest-dom/vitest'
 
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: jest.fn().mockImplementation(query => ({
+  value: vi.fn().mockImplementation(query => ({
     matches: false,
     media: query,
     onchange: null,
-    addListener: jest.fn(), // Deprecated
-    removeListener: jest.fn(), // Deprecated
-    addEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
-    dispatchEvent: jest.fn(),
+    addListener: vi.fn(), // Deprecated
+    removeListener: vi.fn(), // Deprecated
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
   })),
 })
 
 // Mock Monaco Editor
-jest.mock('@monaco-editor/react', () => ({
-  Editor: jest.fn(({ value, onChange }) => {
+vi.mock('@monaco-editor/react', () => ({
+  Editor: vi.fn(({ value, onChange }) => {
     return React.createElement('textarea', {
       value: value,
       onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => onChange?.(e.target.value),
@@ -30,22 +31,22 @@ jest.mock('@monaco-editor/react', () => ({
 }))
 
 // Mock mermaid
-jest.mock('mermaid', () => ({
-  initialize: jest.fn(),
-  render: jest.fn().mockResolvedValue({ svg: '<svg>Mock SVG</svg>' }),
+vi.mock('mermaid', () => ({
+  initialize: vi.fn(),
+  render: vi.fn().mockResolvedValue({ svg: '<svg>Mock SVG</svg>' }),
 }))
 
 // Mock axios
-jest.mock('axios', () => ({
-  create: jest.fn(() => ({
+vi.mock('axios', () => ({
+  create: vi.fn(() => ({
     interceptors: {
-      response: { use: jest.fn() },
-      request: { use: jest.fn() },
+      response: { use: vi.fn() },
+      request: { use: vi.fn() },
     },
-    post: jest.fn(),
-    get: jest.fn(),
-    put: jest.fn(),
-    delete: jest.fn(),
+    post: vi.fn(),
+    get: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
   })),
 }))
 
