@@ -1,18 +1,39 @@
 import React from 'react'
-import { Layout, Typography, Space, Menu, Card, Table, Button, Form, Input, message, Popconfirm } from 'antd'
+import {
+  Layout,
+  Typography,
+  Space,
+  Menu,
+  Card,
+  Table,
+  Button,
+  Form,
+  Input,
+  message,
+  Popconfirm,
+  ConfigProvider,
+  Segmented,
+  Switch,
+  theme as antdTheme,
+  Modal,
+  List
+} from 'antd'
 import {
   CodeOutlined,
   DatabaseOutlined,
-  FileSearchOutlined,
   FolderOpenOutlined,
   HomeOutlined,
   InfoCircleOutlined,
-  PictureOutlined,
-  UploadOutlined
+  AppstoreOutlined,
+  MoonOutlined,
+  SunOutlined,
+  SearchOutlined,
+  QuestionCircleOutlined
 } from '@ant-design/icons'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import SQLInput from './components/SQLInput'
 import MermaidPreviewPage from './components/MermaidPreviewPage'
+import MermaidWorkspace from './components/MermaidWorkspace'
 import { projectService } from './services/api'
 import { Project } from './types'
 
@@ -20,22 +41,24 @@ const { Header, Content } = Layout
 const { Title, Paragraph } = Typography
 const { TextArea } = Input
 
-const GeneratorFeaturePage: React.FC<{ title: string; description: string }> = ({ title, description }) => (
+const WorkspacePage: React.FC = () => (
   <Space direction="vertical" size="large" style={{ width: '100%' }}>
-    <Card>
-      <Title level={4} style={{ marginBottom: 8 }}>{title}</Title>
-      <Paragraph style={{ marginBottom: 0 }}>{description}</Paragraph>
+    <Card className="page-hero-card">
+      <Title level={4} style={{ marginBottom: 8 }}>ER 工作台</Title>
+      <Paragraph style={{ marginBottom: 0 }}>
+        统一处理 SQL 解析、ER 图生成和导出。在同一页面完成输入、检查实体关系、预览和导出，避免在多个重复页面来回切换。
+      </Paragraph>
     </Card>
     <SQLInput />
   </Space>
 )
 
 const HomePage: React.FC = () => (
-  <Card>
+  <Card className="page-hero-card">
     <Title level={3}>欢迎使用 Mermaid ER Generator</Title>
     <Paragraph>
-      这是一个 SQL DDL 到 ER 图的转换工具。已实现功能都提供了独立导航入口：
-      SQL 解析、ER 图生成、导出、项目管理。
+      这是一个 SQL DDL 到 ER 图的转换工具。导航已整合为清晰工作流：
+      ER 工作台（解析/生成/导出一体）、Mermaid 预览、项目管理。
     </Paragraph>
   </Card>
 )
@@ -96,7 +119,7 @@ const ProjectsPage: React.FC = () => {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Card title="新建项目">
+      <Card title="新建项目" className="soft-card">
         <Form form={form} layout="vertical" onFinish={handleCreate}>
           <Form.Item name="name" label="项目名称" rules={[{ required: true, message: '请输入项目名称' }]}>
             <Input placeholder="例如：电商数据库模型" />
@@ -114,12 +137,14 @@ const ProjectsPage: React.FC = () => {
       <Card
         title="项目列表"
         extra={<Button onClick={() => void loadProjects()} loading={loading}>刷新</Button>}
+        className="soft-card"
       >
         <Table<Project>
           rowKey="id"
           loading={loading}
           dataSource={projects}
-          pagination={{ pageSize: 6 }}
+          size="middle"
+          pagination={{ pageSize: 6, showSizeChanger: false }}
           columns={[
             { title: '名称', dataIndex: 'name' },
             { title: '描述', dataIndex: 'description', render: (value) => value || '-' },
@@ -141,7 +166,7 @@ const ProjectsPage: React.FC = () => {
 }
 
 const AboutPage: React.FC = () => (
-  <Card>
+  <Card className="page-hero-card">
     <Title level={3}>关于项目</Title>
     <Paragraph>
       前端基于 React + Ant Design + Vite，后端提供 SQL 解析、ER 图生成与导出 API。
@@ -152,25 +177,197 @@ const AboutPage: React.FC = () => (
 const App: React.FC = () => {
   const location = useLocation()
   const navigate = useNavigate()
+  const [isDark, setIsDark] = React.useState<boolean>(() => localStorage.getItem('ui-dark') === '1')
+  const [density, setDensity] = React.useState<'comfort' | 'compact'>(() => {
+    const stored = localStorage.getItem('ui-density')
+    return stored === 'compact' ? 'compact' : 'comfort'
+  })
+  const [commandOpen, setCommandOpen] = React.useState(false)
+  const [shortcutOpen, setShortcutOpen] = React.useState(false)
+  const [commandKeyword, setCommandKeyword] = React.useState('')
+  const [activeCommandIndex, setActiveCommandIndex] = React.useState(0)
+  const [mruCommandIds, setMruCommandIds] = React.useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('command-mru')
+      return raw ? (JSON.parse(raw) as string[]) : []
+    } catch {
+      return []
+    }
+  })
+
+  React.useEffect(() => {
+    localStorage.setItem('ui-dark', isDark ? '1' : '0')
+  }, [isDark])
+
+  React.useEffect(() => {
+    localStorage.setItem('ui-density', density)
+  }, [density])
+
+  const commandItems = React.useMemo(
+    () => [
+      { id: 'goto-home', group: '导航', label: '首页', hint: '跳转到首页', run: () => navigate('/home') },
+      { id: 'goto-workspace', group: '导航', label: 'ER 工作台', hint: '跳转到 ER 工作台', run: () => navigate('/workspace') },
+      { id: 'goto-mermaid-workspace', group: '导航', label: 'Mermaid 工作台', hint: '跳转到 Mermaid 工作台', run: () => navigate('/mermaid-workspace') },
+      { id: 'goto-mermaid-preview', group: '导航', label: 'Mermaid 预览', hint: '跳转到 Mermaid 预览', run: () => navigate('/mermaid-preview') },
+      { id: 'goto-projects', group: '导航', label: '项目管理', hint: '跳转到项目管理', run: () => navigate('/projects') },
+      { id: 'action-generate-sql', group: '动作', label: 'ER 工作台生成 ER 图', hint: '触发 SQL 工作台生成动作', run: () => window.dispatchEvent(new CustomEvent('app:generate-sql-diagram')) },
+      { id: 'action-transform-mermaid', group: '动作', label: 'Mermaid 工作台解析并生成', hint: '触发 Mermaid 工作台转换动作', run: () => window.dispatchEvent(new CustomEvent('app:transform-mermaid-workspace')) },
+      { id: 'action-render-preview', group: '动作', label: 'Mermaid 预览渲染', hint: '触发 Mermaid 预览渲染动作', run: () => window.dispatchEvent(new CustomEvent('app:render-mermaid-preview')) }
+    ],
+    [navigate]
+  )
+
+  const fuzzyMatch = (text: string, keyword: string): boolean => {
+    const normalizedText = text.toLowerCase()
+    const normalizedKeyword = keyword.toLowerCase().trim()
+    if (!normalizedKeyword) return true
+    if (normalizedText.includes(normalizedKeyword)) return true
+    // subsequence fuzzy match
+    let i = 0
+    for (const ch of normalizedText) {
+      if (ch === normalizedKeyword[i]) i += 1
+      if (i >= normalizedKeyword.length) return true
+    }
+    return false
+  }
+
+  const getMatchedIndexes = (text: string, keyword: string): number[] => {
+    const lowerText = text.toLowerCase()
+    const lowerKeyword = keyword.toLowerCase().trim()
+    if (!lowerKeyword) return []
+
+    const includeIndex = lowerText.indexOf(lowerKeyword)
+    if (includeIndex >= 0) {
+      return Array.from({ length: lowerKeyword.length }, (_, idx) => includeIndex + idx)
+    }
+
+    const indexes: number[] = []
+    let k = 0
+    for (let i = 0; i < lowerText.length && k < lowerKeyword.length; i += 1) {
+      if (lowerText[i] === lowerKeyword[k]) {
+        indexes.push(i)
+        k += 1
+      }
+    }
+    return k === lowerKeyword.length ? indexes : []
+  }
+
+  const highlightText = (text: string, keyword: string): React.ReactNode => {
+    const matched = new Set(getMatchedIndexes(text, keyword))
+    if (matched.size === 0) return text
+    return (
+      <>
+        {text.split('').map((char, idx) => (
+          <span
+            key={`${char}-${idx}`}
+            style={matched.has(idx) ? { background: 'rgba(250, 219, 20, 0.35)', borderRadius: 2 } : undefined}
+          >
+            {char}
+          </span>
+        ))}
+      </>
+    )
+  }
+
+  const filteredCommands = React.useMemo(() => {
+    const keyword = commandKeyword.trim().toLowerCase()
+    const base = commandItems.filter((item) =>
+      fuzzyMatch(`${item.group} ${item.label} ${item.hint}`, keyword)
+    )
+    if (!keyword) {
+      const mruSet = new Set(mruCommandIds)
+      return [...base].sort((a, b) => {
+        const aMru = mruSet.has(a.id) ? mruCommandIds.indexOf(a.id) : Number.MAX_SAFE_INTEGER
+        const bMru = mruSet.has(b.id) ? mruCommandIds.indexOf(b.id) : Number.MAX_SAFE_INTEGER
+        return aMru - bMru
+      })
+    }
+    return base
+  }, [commandItems, commandKeyword, mruCommandIds])
+
+  const groupedCommands = React.useMemo(() => {
+    return {
+      导航: filteredCommands.filter((item) => item.group === '导航'),
+      动作: filteredCommands.filter((item) => item.group === '动作')
+    }
+  }, [filteredCommands])
+
+  React.useEffect(() => {
+    setActiveCommandIndex(0)
+  }, [commandKeyword, commandOpen])
+
+  const executeCommand = (item: (typeof commandItems)[number] | undefined) => {
+    if (!item) return
+    item.run()
+    setMruCommandIds((prev) => {
+      const next = [item.id, ...prev.filter((id) => id !== item.id)].slice(0, 8)
+      localStorage.setItem('command-mru', JSON.stringify(next))
+      return next
+    })
+    setCommandOpen(false)
+    setCommandKeyword('')
+    setActiveCommandIndex(0)
+  }
+
+  const closeCommandPanel = () => {
+    setCommandOpen(false)
+    setCommandKeyword('')
+    setActiveCommandIndex(0)
+  }
+
+  const flatCommands = React.useMemo(() => [...groupedCommands.导航, ...groupedCommands.动作], [groupedCommands])
+
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const isTypingField =
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.getAttribute('contenteditable') === 'true'
+
+      const meta = event.ctrlKey || event.metaKey
+      if (meta && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setCommandOpen(true)
+        return
+      }
+
+      if (!isTypingField && event.key === '?') {
+        event.preventDefault()
+        setShortcutOpen(true)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   const menuItems = [
     { key: '/home', icon: <HomeOutlined />, label: '首页' },
-    { key: '/sql-parser', icon: <FileSearchOutlined />, label: 'SQL 解析' },
-    { key: '/diagram', icon: <PictureOutlined />, label: 'ER 图生成' },
+    { key: '/workspace', icon: <AppstoreOutlined />, label: 'ER 工作台' },
+    { key: '/mermaid-workspace', icon: <CodeOutlined />, label: 'Mermaid工作台' },
     { key: '/mermaid-preview', icon: <CodeOutlined />, label: 'Mermaid预览' },
-    { key: '/export', icon: <UploadOutlined />, label: '导出' },
     { key: '/projects', icon: <FolderOpenOutlined />, label: '项目管理' },
     { key: '/about', icon: <InfoCircleOutlined />, label: '关于' }
   ]
 
   const selectedKey = menuItems.some((item) => item.key === location.pathname)
     ? location.pathname
-    : '/sql-parser'
+    : '/workspace'
 
   return (
+    <ConfigProvider
+      theme={{
+        algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+        token: {
+          borderRadius: 10
+        }
+      }}
+    >
+    <div className={`app-root ${isDark ? 'theme-dark' : ''} density-${density}`}>
     <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ background: '#fff', padding: '0 24px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+      <Header className="app-header" style={{ background: 'rgba(255,255,255,0.92)', padding: '0 24px', boxShadow: '0 2px 10px rgba(24,48,87,0.08)' }}>
+        <Space style={{ width: '100%', justifyContent: 'space-between' }} align="center">
           <DatabaseOutlined style={{ fontSize: 24, color: '#1890ff' }} />
           <Title level={3} style={{ margin: 0, color: '#1890ff' }}>
             Mermaid ER Generator
@@ -182,33 +379,164 @@ const App: React.FC = () => {
             onClick={({ key }) => navigate(key)}
             style={{ flex: 1, minWidth: 700, marginLeft: 24, borderBottom: 'none' }}
           />
+          <Space size={10}>
+            <Button icon={<SearchOutlined />} onClick={() => setCommandOpen(true)}>
+              命令面板
+            </Button>
+            <Button icon={<QuestionCircleOutlined />} onClick={() => setShortcutOpen(true)}>
+              快捷键
+            </Button>
+            <Segmented
+              size="small"
+              value={density}
+              onChange={(value) => setDensity(value as 'comfort' | 'compact')}
+              options={[
+                { label: '舒适', value: 'comfort' },
+                { label: '紧凑', value: 'compact' }
+              ]}
+            />
+            <Switch
+              checked={isDark}
+              onChange={setIsDark}
+              checkedChildren={<MoonOutlined />}
+              unCheckedChildren={<SunOutlined />}
+            />
+          </Space>
         </Space>
       </Header>
       <Content style={{ padding: '24px' }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+        <div className="app-shell">
           <Routes>
-            <Route path="/" element={<Navigate to="/sql-parser" replace />} />
+            <Route path="/" element={<Navigate to="/workspace" replace />} />
             <Route path="/home" element={<HomePage />} />
-            <Route
-              path="/sql-parser"
-              element={<GeneratorFeaturePage title="SQL 解析" description="输入 SQL DDL 并解析实体、字段和关系。" />}
-            />
-            <Route
-              path="/diagram"
-              element={<GeneratorFeaturePage title="ER 图生成" description="将 SQL 解析结果可视化为 Mermaid ER 图。" />}
-            />
-            <Route
-              path="/export"
-              element={<GeneratorFeaturePage title="导出" description="把生成结果导出为 SVG/PNG/PDF 文件。" />}
-            />
+            <Route path="/workspace" element={<WorkspacePage />} />
+            <Route path="/mermaid-workspace" element={<MermaidWorkspace />} />
+            <Route path="/sql-parser" element={<Navigate to="/workspace" replace />} />
+            <Route path="/diagram" element={<Navigate to="/workspace" replace />} />
+            <Route path="/export" element={<Navigate to="/workspace" replace />} />
             <Route path="/mermaid-preview" element={<MermaidPreviewPage />} />
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/about" element={<AboutPage />} />
-            <Route path="*" element={<Navigate to="/sql-parser" replace />} />
+            <Route path="*" element={<Navigate to="/workspace" replace />} />
           </Routes>
         </div>
       </Content>
     </Layout>
+    <Modal
+      title="命令面板"
+      open={commandOpen}
+      onCancel={closeCommandPanel}
+      footer={null}
+      width={720}
+      destroyOnClose
+    >
+      <Space direction="vertical" style={{ width: '100%' }}>
+        <Input
+          autoFocus
+          placeholder="搜索命令，例如：Mermaid 工作台 / 生成 ER 图"
+          value={commandKeyword}
+          onChange={(event) => setCommandKeyword(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              closeCommandPanel()
+              return
+            }
+            if (event.key === 'ArrowDown') {
+              event.preventDefault()
+              if (flatCommands.length === 0) return
+              setActiveCommandIndex((prev) => (prev + 1) % flatCommands.length)
+              return
+            }
+            if (event.key === 'ArrowUp') {
+              event.preventDefault()
+              if (flatCommands.length === 0) return
+              setActiveCommandIndex((prev) => (prev - 1 + flatCommands.length) % flatCommands.length)
+              return
+            }
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              executeCommand(flatCommands[activeCommandIndex] || flatCommands[0])
+            }
+          }}
+        />
+        {mruCommandIds.length > 0 && commandKeyword.trim().length === 0 && (
+          <Typography.Text className="hotkey-hint">
+            最近使用：{mruCommandIds
+              .map((id) => commandItems.find((item) => item.id === id)?.label)
+              .filter(Boolean)
+              .slice(0, 5)
+              .join(' / ')}
+          </Typography.Text>
+        )}
+        {flatCommands.length === 0 ? (
+          <Card size="small">没有匹配命令</Card>
+        ) : (
+          <Space direction="vertical" style={{ width: '100%' }} size="small">
+            {(['导航', '动作'] as const).map((groupName) => {
+              const items = groupedCommands[groupName]
+              if (items.length === 0) return null
+              return (
+                <Card key={groupName} size="small" title={groupName}>
+                  <List
+                    size="small"
+                    dataSource={items}
+                    renderItem={(item) => {
+                      const index = flatCommands.findIndex((command) => command.id === item.id)
+                      const active = index === activeCommandIndex
+                      return (
+                        <List.Item
+                          style={{
+                            cursor: 'pointer',
+                            borderRadius: 6,
+                            padding: '8px 10px',
+                            background: active ? 'rgba(22,119,255,0.12)' : 'transparent'
+                          }}
+                          onMouseEnter={() => setActiveCommandIndex(index)}
+                          onClick={() => executeCommand(item)}
+                        >
+                          <Space direction="vertical" size={0}>
+                            <Typography.Text strong>{highlightText(item.label, commandKeyword)}</Typography.Text>
+                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                              {highlightText(item.hint, commandKeyword)}
+                            </Typography.Text>
+                          </Space>
+                        </List.Item>
+                      )
+                    }}
+                  />
+                </Card>
+              )
+            })}
+          </Space>
+        )}
+        <Typography.Text className="hotkey-hint">
+          提示：Ctrl/Cmd + K 打开，↑/↓选择，Enter 执行
+        </Typography.Text>
+      </Space>
+    </Modal>
+    <Modal
+      title="快捷键帮助"
+      open={shortcutOpen}
+      onCancel={() => setShortcutOpen(false)}
+      footer={null}
+      width={680}
+      destroyOnClose
+    >
+      <List
+        size="small"
+        bordered
+        dataSource={[
+          'Ctrl/Cmd + K：打开命令面板',
+          '？：打开快捷键帮助（非输入状态）',
+          'Ctrl/Cmd + Enter：执行当前页面主操作（生成/转换/渲染）',
+          'Ctrl/Cmd + Shift + C：复制转换后代码（Mermaid 工作台 / 预览页）'
+        ]}
+        renderItem={(item) => <List.Item>{item}</List.Item>}
+      />
+    </Modal>
+    </div>
+    </ConfigProvider>
   )
 }
 

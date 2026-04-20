@@ -80,11 +80,14 @@ const DiagramRenderer: React.FC<DiagramRendererProps> = ({ code, theme = 'defaul
       setError(null)
 
       try {
+        const isDarkUI = !!document.querySelector('.app-root.theme-dark')
+        const resolvedTheme = theme === 'default' && isDarkUI ? 'dark' : theme
+
         // Initialize mermaid
         mermaid.initialize({
           startOnLoad: false,
           securityLevel: 'loose',
-          theme,
+          theme: resolvedTheme,
           fontFamily: 'sans-serif'
         })
 

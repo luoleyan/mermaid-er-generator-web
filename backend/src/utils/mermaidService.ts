@@ -126,9 +126,10 @@ export class MermaidService {
     relationships: Relationship[],
     chenPinnedEntities: string[] = []
   ): string {
+    const { displayEntities, displayRelationships } = this.normalizeForClassicER(entities, relationships);
     const lines: string[] = ['flowchart LR'];
 
-    for (const entity of entities) {
+    for (const entity of displayEntities) {
       const entityNode = this.chenEntityNodeId(entity.name);
       const leftBucket = `${entityNode}_ATTR_LEFT`;
       const rightBucket = `${entityNode}_ATTR_RIGHT`;
@@ -162,31 +163,7 @@ export class MermaidService {
       }
     }
 
-    // Global anchor grid: keep entity positions stable and reduce vertical drift.
-    const anchorColumns = this.buildChenEntityAnchorColumns(entities, relationships, chenPinnedEntities);
-    lines.push('  subgraph CHEN_ENTITY_ANCHOR_GRID[" "]');
-    lines.push('    direction LR');
-    lines.push('    subgraph CHEN_ANCHOR_PRIMARY["主实体"]');
-    lines.push('      direction TB');
-    for (const entityName of anchorColumns.primary) {
-      lines.push(`      ${this.chenEntityNodeId(entityName)}`);
-    }
-    lines.push('    end');
-    lines.push('    subgraph CHEN_ANCHOR_CORE["核心实体"]');
-    lines.push('      direction TB');
-    for (const entityName of anchorColumns.core) {
-      lines.push(`      ${this.chenEntityNodeId(entityName)}`);
-    }
-    lines.push('    end');
-    lines.push('    subgraph CHEN_ANCHOR_EDGE["边缘实体"]');
-    lines.push('      direction TB');
-    for (const entityName of anchorColumns.edge) {
-      lines.push(`      ${this.chenEntityNodeId(entityName)}`);
-    }
-    lines.push('    end');
-    lines.push('  end');
-
-    const sortedRelationships = [...relationships].sort((a, b) =>
+    const sortedRelationships = [...displayRelationships].sort((a, b) =>
       `${a.from}|${a.to}|${a.name || ''}`.localeCompare(`${b.from}|${b.to}|${b.name || ''}`)
     );
 
@@ -198,19 +175,10 @@ export class MermaidService {
         relationshipLabel
       );
       const rowNode = `${relationshipNode}_ROW`;
-      const relationTopAttr = `${relationshipNode}_TOP_ATTRS`;
-      const relationBottomAttr = `${relationshipNode}_BOTTOM_ATTRS`;
-      const relatedAttributes = [relationship.fromColumn, relationship.toColumn].filter(
-        (value): value is string => !!value
-      );
-      const midpoint = Math.ceil(relatedAttributes.length / 2);
-      const topAttrs = relatedAttributes.slice(0, midpoint);
-      const bottomAttrs = relatedAttributes.slice(midpoint);
       const oriented = this.orientChenRelationship(relationship);
-      const topAttrNodes: string[] = [];
-      const bottomAttrNodes: string[] = [];
 
-      // Relationship in the middle, with optional relationship attributes around it.
+      // Relationship in the middle with strict Chen semantics:
+      // entity-relationship links + cardinality only.
       lines.push(`  subgraph ${relationshipNode}_GROUP[" "]`);
       lines.push('    direction TB');
       lines.push(`    subgraph ${rowNode}[" "]`);
@@ -219,33 +187,10 @@ export class MermaidService {
       lines.push(`      ${relationshipNode}{"${relationshipLabel}"}`);
       lines.push(`      ${oriented.rightEntityNode}["${oriented.rightEntityLabel}"]`);
       lines.push('    end');
-      lines.push(`    subgraph ${relationTopAttr}[" "]`);
-      lines.push('      direction LR');
-      for (const attr of topAttrs) {
-        const attrNode = this.chenRelationAttrNodeId(relationship.from, relationship.to, 'from', attr);
-        topAttrNodes.push(attrNode);
-        lines.push(`      ${attrNode}(("${attr}"))`);
-      }
-      lines.push('    end');
-      lines.push(`    subgraph ${relationBottomAttr}[" "]`);
-      lines.push('      direction LR');
-      for (const attr of bottomAttrs) {
-        const attrNode = this.chenRelationAttrNodeId(relationship.from, relationship.to, 'to', attr);
-        bottomAttrNodes.push(attrNode);
-        lines.push(`      ${attrNode}(("${attr}"))`);
-      }
-      lines.push('    end');
       lines.push('  end');
 
       lines.push(`  ${oriented.leftEntityNode} -- "${oriented.leftCardinality}" --- ${relationshipNode}`);
       lines.push(`  ${relationshipNode} -- "${oriented.rightCardinality}" --- ${oriented.rightEntityNode}`);
-
-      for (const node of topAttrNodes) {
-        lines.push(`  ${relationshipNode} --- ${node}`);
-      }
-      for (const node of bottomAttrNodes) {
-        lines.push(`  ${relationshipNode} --- ${node}`);
-      }
     }
 
     return lines.join('\n');
