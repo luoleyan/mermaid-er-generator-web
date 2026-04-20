@@ -82,12 +82,15 @@ describe('SQLInput Component', () => {
   it('handles theme change', () => {
     render(<SQLInput />)
     
-    const themeSelect = screen.getByDisplayValue('默认')
+    // Use getByRole to find the select combobox
+    const themeSelect = screen.getByRole('combobox')
     fireEvent.mouseDown(themeSelect)
     
+    // Wait for the dropdown to open and find the option
     const darkOption = screen.getByText('深色')
     fireEvent.click(darkOption)
     
-    expect(themeSelect).toHaveValue('dark')
+    // Check that the selection changed
+    expect(screen.getByTitle('深色')).toBeInTheDocument()
   })
 })

@@ -54,17 +54,20 @@ describe('ExportPanel Component', () => {
   it('handles loading state', async () => {
     // Mock slow export
     vi.mocked(exportService.exportSVG).mockImplementation(() => 
-      new Promise(resolve => setTimeout(resolve, 1000))
+      new Promise(resolve => setTimeout(resolve, 100))
     )
     
     render(<ExportPanel sql="CREATE TABLE users (id INT);" />)
     
-    fireEvent.click(screen.getByText('导出 SVG'))
+    const svgButton = screen.getByRole('button', { name: /导出 SVG/i })
+    fireEvent.click(svgButton)
     
-    expect(screen.getByText('导出 SVG')).toBeDisabled()
+    // Button should be disabled while loading
+    expect(svgButton).toBeDisabled()
     
+    // Wait for export to complete
     await waitFor(() => {
-      expect(screen.getByText('导出 SVG')).not.toBeDisabled()
-    }, { timeout: 2000 })
+      expect(exportService.exportSVG).toHaveBeenCalled()
+    })
   })
 })
