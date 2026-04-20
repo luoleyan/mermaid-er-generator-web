@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Card, Row, Col, Spin, Alert, Space, Typography } from 'antd'
-import { DatabaseOutlined, RelationshipOutlined } from '@ant-design/icons'
+import { DatabaseOutlined, LinkOutlined } from '@ant-design/icons'
 import { Entity, Relationship, SQLParseResult } from '../types'
 
 const { Title, Text } = Typography
@@ -71,7 +71,7 @@ const EntityList: React.FC<EntityListProps> = ({ data }) => {
         <Card
           title={
             <Space>
-              <RelationshipOutlined />
+              <LinkOutlined />
               <span>关系列表 ({data.relationships.length})</span>
             </Space>
           }

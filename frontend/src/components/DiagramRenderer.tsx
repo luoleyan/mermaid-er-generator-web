@@ -1,6 +1,8 @@
-import React, { useRef, useEffect } from 'react'
-import { Card, Spin, Alert } from 'antd'
+import React, { useRef, useEffect, useState } from 'react'
+import { Card, Spin, Alert, Typography } from 'antd'
 import mermaid from 'mermaid'
+
+const { Text } = Typography
 
 interface DiagramRendererProps {
   code: string
