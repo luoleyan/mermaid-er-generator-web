@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { Entity, Column, Relationship, SQLParseResult } from '../../../shared/types';
+import type { Entity, Column, Relationship, SQLParseResult } from '../types';
 
 export class SQLParser {
   private static extractTableName(statement: string): string | null {

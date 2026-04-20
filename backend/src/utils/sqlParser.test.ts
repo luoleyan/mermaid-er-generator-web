@@ -1,5 +1,5 @@
 import { SQLParser } from './sqlParser';
-import { Column, Entity } from '../../../../shared/types';
+import type { Column } from '../types';
 
 describe('SQLParser', () => {
   describe('parseSQL', () => {
@@ -16,13 +16,13 @@ describe('SQLParser', () => {
       const result = SQLParser.parseSQL(sql);
       
       expect(result.entities).toHaveLength(1);
-      expect(result.entities[0].name).toBe('users');
-      expect(result.entities[0].columns).toHaveLength(4);
+      expect(result.entities[0]!.name).toBe('users');
+      expect(result.entities[0]!.columns).toHaveLength(4);
       
-      const idColumn = result.entities[0].columns.find((c: Column) => c.name === 'id');
+      const idColumn = result.entities[0]!.columns.find((c: Column) => c.name === 'id');
       expect(idColumn?.primaryKey).toBe(true);
       
-      const nameColumn = result.entities[0].columns.find((c: Column) => c.name === 'name');
+      const nameColumn = result.entities[0]!.columns.find((c: Column) => c.name === 'name');
       expect(nameColumn?.nullable).toBe(false);
     });
 
@@ -44,8 +44,8 @@ describe('SQLParser', () => {
       const result = SQLParser.parseSQL(sql);
       
       expect(result.entities).toHaveLength(2);
-      expect(result.entities[0].name).toBe('users');
-      expect(result.entities[1].name).toBe('posts');
+      expect(result.entities[0]!.name).toBe('users');
+      expect(result.entities[1]!.name).toBe('posts');
     });
 
     it('should extract foreign key relationships', () => {
@@ -66,9 +66,9 @@ describe('SQLParser', () => {
       const result = SQLParser.parseSQL(sql);
       
       expect(result.relationships).toHaveLength(1);
-      expect(result.relationships[0].from).toBe('users');
-      expect(result.relationships[0].to).toBe('posts');
-      expect(result.relationships[0].type).toBe('one-to-many');
+      expect(result.relationships[0]!.from).toBe('users');
+      expect(result.relationships[0]!.to).toBe('posts');
+      expect(result.relationships[0]!.type).toBe('one-to-many');
     });
 
     it('should handle complex column types', () => {
@@ -87,12 +87,12 @@ describe('SQLParser', () => {
       const result = SQLParser.parseSQL(sql);
       
       expect(result.entities).toHaveLength(1);
-      expect(result.entities[0].columns).toHaveLength(7);
+      expect(result.entities[0]!.columns).toHaveLength(7);
       
-      const priceColumn = result.entities[0].columns.find((c: Column) => c.name === 'price');
+      const priceColumn = result.entities[0]!.columns.find((c: Column) => c.name === 'price');
       expect(priceColumn?.type).toBe('DECIMAL(10,2)');
       
-      const isAvailableColumn = result.entities[0].columns.find((c: Column) => c.name === 'is_available');
+      const isAvailableColumn = result.entities[0]!.columns.find((c: Column) => c.name === 'is_available');
       expect(isAvailableColumn?.type).toBe('BOOLEAN');
     });
 
@@ -108,8 +108,8 @@ describe('SQLParser', () => {
       const result = SQLParser.parseSQL(sql);
       
       expect(result.entities).toHaveLength(1);
-      expect(result.entities[0].name).toBe('users');
-      expect(result.entities[0].columns[0].name).toBe('id');
+      expect(result.entities[0]!.name).toBe('users');
+      expect(result.entities[0]!.columns[0]!.name).toBe('id');
     });
 
     it('should handle IF NOT EXISTS syntax', () => {
@@ -123,7 +123,7 @@ describe('SQLParser', () => {
       const result = SQLParser.parseSQL(sql);
       
       expect(result.entities).toHaveLength(1);
-      expect(result.entities[0].name).toBe('users');
+      expect(result.entities[0]!.name).toBe('users');
     });
 
     it('should handle empty SQL gracefully', () => {
@@ -155,8 +155,8 @@ describe('SQLParser', () => {
       const result = SQLParser.parseSQL(sql);
       
       expect(result.entities).toHaveLength(1);
-      expect(result.entities[0].name).toBe('users');
-      expect(result.entities[0].columns).toHaveLength(2);
+      expect(result.entities[0]!.name).toBe('users');
+      expect(result.entities[0]!.columns).toHaveLength(2);
     });
   });
 });
