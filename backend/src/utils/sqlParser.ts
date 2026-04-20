@@ -3,7 +3,7 @@ import type { Entity, Column, Relationship, SQLParseResult } from '../types';
 
 export class SQLParser {
   private static extractTableName(statement: string): string | null {
-    const createTableMatch = statement.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`"]?(\w+)[`"]?/i);
+    const createTableMatch = statement.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`"']?(\w+)[`"']?/i);
     return createTableMatch ? createTableMatch[1] : null;
   }
 
@@ -78,16 +78,30 @@ export class SQLParser {
   private static extractRelationships(entities: Entity[], sql: string): Relationship[] {
     const relationships: Relationship[] = [];
     
-    // Parse each CREATE TABLE statement to find foreign keys
-    const tableRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`"]?(\w+)[`"]?\s*\(([\s\S]*?)\)\s*;?/gi;
-    let tableMatch;
+    // Find all CREATE TABLE statements
+    const createTableRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`"']?(\w+)[`"']?/gi;
+    const tableMatches: Array<{ name: string; index: number }> = [];
+    let match;
     
-    while ((tableMatch = tableRegex.exec(sql)) !== null) {
-      const tableName = tableMatch[1];
-      const tableBody = tableMatch[2];
+    while ((match = createTableRegex.exec(sql)) !== null) {
+      tableMatches.push({ name: match[1], index: match.index });
+    }
+    
+    // Process each table
+    for (let i = 0; i < tableMatches.length; i++) {
+      const tableName = tableMatches[i].name;
+      const startIndex = tableMatches[i].index;
+      const endIndex = i + 1 < tableMatches.length ? tableMatches[i + 1].index : sql.length;
+      const tableSection = sql.substring(startIndex, endIndex);
       
-      // Find FOREIGN KEY constraints in this table
-      const fkRegex = /FOREIGN\s+KEY\s*\(\s*[`"]?(\w+)[`"]?\s*\)\s*REFERENCES\s+[`"]?(\w+)[`"]?\s*\(\s*[`"]?(\w+)[`"]?\s*\)/gi;
+      // Find the body between parentheses
+      const bodyMatch = tableSection.match(/\(([\s\S]*)\)/);
+      if (!bodyMatch) continue;
+      
+      const tableBody = bodyMatch[1];
+      
+      // Find FOREIGN KEY constraints - use simpler regex without global flag for iteration
+      const fkRegex = /FOREIGN\s+KEY\s*\(\s*(\w+)\s*\)\s*REFERENCES\s+(\w+)\s*\(\s*(\w+)\s*\)/gi;
       let fkMatch;
       
       while ((fkMatch = fkRegex.exec(tableBody)) !== null) {
@@ -205,7 +219,11 @@ export class SQLParser {
     }
 
     // Extract relationships after all entities are parsed
-    relationships.push(...this.extractRelationships(entities, normalizedSQL));
+    // Use original sql (with comments removed) for relationship extraction
+    const sqlForRelationships = sql
+      .replace(/--[^\n]*\n/g, '\n') // Remove single-line comments
+      .replace(/\/\*[\s\S]*?\*\//g, ''); // Remove multi-line comments
+    relationships.push(...this.extractRelationships(entities, sqlForRelationships));
 
     return {
       entities,
