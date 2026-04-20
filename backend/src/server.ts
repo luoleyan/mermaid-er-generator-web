@@ -26,6 +26,23 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/export', exportRoutes);
 
 // Health check
+app.get('/', (req, res) => {
+  res.json({
+    name: 'Mermaid ER Generator Backend',
+    status: 'OK',
+    health: '/health',
+    apiPrefix: '/api'
+  });
+});
+
+app.get('/favicon.ico', (req, res) => {
+  res.status(204).end();
+});
+
+app.get('/.well-known/*', (req, res) => {
+  res.status(204).end();
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });

@@ -56,6 +56,8 @@ export interface MermaidConfig {
   fontFamily: string;
 }
 
+export type ViewMode = 'classic' | 'physical' | 'chen';
+
 export interface APIResponse<T> {
   success: boolean;
   data?: T;
