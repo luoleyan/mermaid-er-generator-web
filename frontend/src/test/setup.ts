@@ -1,5 +1,4 @@
 import React from 'react'
-import { App } from './App'
 
 // Test setup file
 import '@testing-library/jest-dom'
@@ -21,13 +20,13 @@ Object.defineProperty(window, 'matchMedia', {
 
 // Mock Monaco Editor
 jest.mock('@monaco-editor/react', () => ({
-  Editor: jest.fn(({ value, onChange, theme, options }) => (
-    <textarea
-      value={value}
-      onChange={(e) => onChange?.(e.target.value)}
-      data-testid="monaco-editor"
-    />
-  )),
+  Editor: jest.fn(({ value, onChange }) => {
+    return React.createElement('textarea', {
+      value: value,
+      onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => onChange?.(e.target.value),
+      'data-testid': 'monaco-editor'
+    });
+  }),
 }))
 
 // Mock mermaid
@@ -50,4 +49,4 @@ jest.mock('axios', () => ({
   })),
 }))
 
-export default { App }
+export {}
