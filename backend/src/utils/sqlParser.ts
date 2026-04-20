@@ -3,52 +3,70 @@ import type { Entity, Column, Relationship, SQLParseResult } from '../types';
 
 export class SQLParser {
   private static extractTableName(statement: string): string | null {
-    const createTableMatch = statement.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?(\w+)`?/i);
+    const createTableMatch = statement.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`"]?(\w+)[`"]?/i);
     return createTableMatch ? createTableMatch[1] : null;
   }
 
   private static extractColumns(statement: string): Column[] {
     const columns: Column[] = [];
-    const columnsMatch = statement.match(/\(([\s\S]*?)\)/);
     
-    if (!columnsMatch) return columns;
+    // Extract content between parentheses
+    const match = statement.match(/\(([\s\S]*)\)\s*;?\s*$/);
+    if (!match) return columns;
 
-    const columnDefinitions = columnsMatch[1].split(',').map(def => def.trim());
+    const content = match[1];
     
-    for (let i = 0; i < columnDefinitions.length; i++) {
-      const columnDef = columnDefinitions[i];
+    // Split by comma, but handle nested parentheses
+    const definitions: string[] = [];
+    let current = '';
+    let depth = 0;
+    
+    for (const char of content) {
+      if (char === '(') depth++;
+      else if (char === ')') depth--;
       
-      // Skip constraints
-      if (columnDef.toUpperCase().includes('PRIMARY KEY') ||
-          columnDef.toUpperCase().includes('FOREIGN KEY') ||
-          columnDef.toUpperCase().includes('UNIQUE') ||
-          columnDef.toUpperCase().includes('CHECK')) {
+      if (char === ',' && depth === 0) {
+        definitions.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    if (current.trim()) {
+      definitions.push(current.trim());
+    }
+
+    for (const def of definitions) {
+      const trimmed = def.trim();
+      if (!trimmed) continue;
+
+      // Skip constraints (PRIMARY KEY, FOREIGN KEY, etc.)
+      const upper = trimmed.toUpperCase();
+      if (upper.startsWith('PRIMARY KEY') ||
+          upper.startsWith('FOREIGN KEY') ||
+          upper.startsWith('CONSTRAINT') ||
+          upper.startsWith('UNIQUE') ||
+          upper.startsWith('CHECK') ||
+          upper.startsWith('INDEX')) {
         continue;
       }
 
-      const columnMatch = columnDef.match(/^`?(\w+)`?\s+([^,\s]+(?:\([^)]+\))?)(.*)$/i);
+      // Parse column definition
+      // Pattern: name TYPE [(args)] [constraints]
+      const colMatch = trimmed.match(/^[`"']?(\w+)[`"']?\s+(\w+(?:\([^)]+\))?)(.*)$/i);
       
-      if (columnMatch) {
-        const name = columnMatch[1];
-        const type = columnMatch[2].toUpperCase();
-        const constraints = columnMatch[3].toUpperCase();
+      if (colMatch) {
+        const name = colMatch[1];
+        const type = colMatch[2].toUpperCase();
+        const rest = colMatch[3].toUpperCase();
         
         const column: Column = {
           id: uuidv4(),
           name,
           type,
-          nullable: !constraints.includes('NOT NULL'),
-          primaryKey: constraints.includes('PRIMARY KEY')
+          nullable: !rest.includes('NOT NULL'),
+          primaryKey: rest.includes('PRIMARY KEY')
         };
-
-        // Extract foreign key information
-        const fkMatch = columnDef.match(/FOREIGN\s+KEY\s+\(\s*`?(\w+)`?\s*\)\s+REFERENCES\s+`?(\w+)`?\s*\(\s*`?(\w+)`?\s*\)/i);
-        if (fkMatch) {
-          column.foreignKey = {
-            referencedTable: fkMatch[2],
-            referencedColumn: fkMatch[3]
-          };
-        }
 
         columns.push(column);
       }
@@ -59,51 +77,46 @@ export class SQLParser {
 
   private static extractRelationships(entities: Entity[], sql: string): Relationship[] {
     const relationships: Relationship[] = [];
-    const foreignKeys: Array<{
-      fromTable: string;
-      fromColumn: string;
-      toTable: string;
-      toColumn: string;
-    }> = [];
-
-    // Find all foreign key definitions
-    const fkRegex = /FOREIGN\s+KEY\s+\(\s*`?(\w+)`?\s*\)\s+REFERENCES\s+`?(\w+)`?\s*\(\s*`?(\w+)`?\s*\)/gi;
-    let match;
     
-    while ((match = fkRegex.exec(sql)) !== null) {
-      foreignKeys.push({
-        fromTable: match[2], // referenced table (parent)
-        fromColumn: match[3], // referenced column
-        toTable: match[0].match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?(\w+)`?/i)?.[1] || '', // current table
-        toColumn: match[1] // current column
-      });
-    }
-
-    // Create relationships from foreign keys
-    for (const fk of foreignKeys) {
-      const fromEntity = entities.find(e => e.name === fk.fromTable);
-      const toEntity = entities.find(e => e.name === fk.toTable);
+    // Parse each CREATE TABLE statement to find foreign keys
+    const tableRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`"]?(\w+)[`"]?\s*\(([\s\S]*?)\)\s*;?/gi;
+    let tableMatch;
+    
+    while ((tableMatch = tableRegex.exec(sql)) !== null) {
+      const tableName = tableMatch[1];
+      const tableBody = tableMatch[2];
       
-      if (fromEntity && toEntity) {
+      // Find FOREIGN KEY constraints in this table
+      const fkRegex = /FOREIGN\s+KEY\s*\(\s*[`"]?(\w+)[`"]?\s*\)\s*REFERENCES\s+[`"]?(\w+)[`"]?\s*\(\s*[`"]?(\w+)[`"]?\s*\)/gi;
+      let fkMatch;
+      
+      while ((fkMatch = fkRegex.exec(tableBody)) !== null) {
+        const fromColumn = fkMatch[1];
+        const toTable = fkMatch[2];
+        const toColumn = fkMatch[3];
+        
         const relationship: Relationship = {
           id: uuidv4(),
-          from: fk.fromTable,
-          to: fk.toTable,
-          type: 'one-to-many', // Default assumption
-          fromColumn: fk.fromColumn,
-          toColumn: fk.toColumn
+          from: toTable,  // Referenced table (parent)
+          to: tableName,  // Current table (child)
+          type: 'one-to-many',
+          fromColumn: toColumn,
+          toColumn: fromColumn
         };
 
-        // Determine relationship type
-        const fromColumn = fromEntity.columns.find(c => c.name === fk.fromColumn);
-        const toColumn = toEntity.columns.find(c => c.name === fk.toColumn);
+        // Determine relationship type based on primary keys
+        const parentEntity = entities.find(e => e.name === toTable);
+        const childEntity = entities.find(e => e.name === tableName);
         
-        if (fromColumn && toColumn) {
-          if (fromColumn.primaryKey && !toColumn.primaryKey) {
+        if (parentEntity && childEntity) {
+          const parentCol = parentEntity.columns.find(c => c.name === toColumn);
+          const childCol = childEntity.columns.find(c => c.name === fromColumn);
+          
+          if (parentCol?.primaryKey && !childCol?.primaryKey) {
             relationship.type = 'one-to-many';
-          } else if (!fromColumn.primaryKey && toColumn.primaryKey) {
+          } else if (!parentCol?.primaryKey && childCol?.primaryKey) {
             relationship.type = 'many-to-one';
-          } else {
+          } else if (parentCol?.primaryKey && childCol?.primaryKey) {
             relationship.type = 'one-to-one';
           }
         }
@@ -120,15 +133,49 @@ export class SQLParser {
     const relationships: Relationship[] = [];
     const errors: string[] = [];
 
-    // Normalize SQL
+    if (!sql.trim()) {
+      return { entities, relationships, errors };
+    }
+
+    // Normalize SQL - remove comments but preserve structure
     const normalizedSQL = sql
-      .replace(/--.*$/gm, '') // Remove comments
-      .replace(/\s+/g, ' ') // Normalize whitespace
+      .replace(/--[^\n]*\n/g, '\n') // Remove single-line comments
+      .replace(/\/\*[\s\S]*?\*\//g, '') // Remove multi-line comments
       .trim();
 
-    // Split into statements
-    const statements = normalizedSQL.split(';').filter(stmt => stmt.trim().length > 0);
+    // Split into statements (handle semicolons inside strings)
+    const statements: string[] = [];
+    let current = '';
+    let inString = false;
+    let stringChar = '';
+    
+    for (let i = 0; i < normalizedSQL.length; i++) {
+      const char = normalizedSQL[i];
+      const prevChar = i > 0 ? normalizedSQL[i - 1] : '';
+      
+      if (!inString && (char === "'" || char === '"' || char === '`')) {
+        inString = true;
+        stringChar = char;
+      } else if (inString && char === stringChar && prevChar !== '\\') {
+        inString = false;
+        stringChar = '';
+      }
+      
+      if (!inString && char === ';') {
+        if (current.trim()) {
+          statements.push(current.trim());
+        }
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    
+    if (current.trim()) {
+      statements.push(current.trim());
+    }
 
+    // Parse each statement
     for (const statement of statements) {
       const trimmedStatement = statement.trim();
       
@@ -137,6 +184,7 @@ export class SQLParser {
           const tableName = this.extractTableName(trimmedStatement);
           
           if (tableName) {
+            // Need to find the complete statement including the closing parenthesis
             const columns = this.extractColumns(trimmedStatement);
             
             const entity: Entity = {
@@ -148,16 +196,16 @@ export class SQLParser {
 
             entities.push(entity);
           } else {
-            errors.push(`Invalid CREATE TABLE statement: ${trimmedStatement}`);
+            errors.push(`Invalid CREATE TABLE statement: ${trimmedStatement.substring(0, 100)}...`);
           }
         } catch (error) {
-          errors.push(`Error parsing statement: ${trimmedStatement} - ${error}`);
+          errors.push(`Error parsing statement: ${error}`);
         }
       }
     }
 
     // Extract relationships after all entities are parsed
-    relationships.push(...this.extractRelationships(entities, sql));
+    relationships.push(...this.extractRelationships(entities, normalizedSQL));
 
     return {
       entities,
