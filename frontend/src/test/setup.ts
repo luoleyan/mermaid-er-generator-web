@@ -19,6 +19,15 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 })
 
+// Mock URL.createObjectURL
+Object.defineProperty(window, 'URL', {
+  writable: true,
+  value: {
+    createObjectURL: vi.fn(() => 'blob:mock-url'),
+    revokeObjectURL: vi.fn(),
+  },
+})
+
 // Mock Monaco Editor
 vi.mock('@monaco-editor/react', () => ({
   Editor: vi.fn(({ value, onChange }) => {
@@ -32,6 +41,10 @@ vi.mock('@monaco-editor/react', () => ({
 
 // Mock mermaid
 vi.mock('mermaid', () => ({
+  default: {
+    initialize: vi.fn(),
+    render: vi.fn().mockResolvedValue({ svg: '<svg>Mock SVG</svg>' }),
+  },
   initialize: vi.fn(),
   render: vi.fn().mockResolvedValue({ svg: '<svg>Mock SVG</svg>' }),
 }))
