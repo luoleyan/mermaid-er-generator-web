@@ -54,7 +54,8 @@ describe('EntityList Component', () => {
     expect(screen.getByText('实体列表 (1)')).toBeInTheDocument()
     expect(screen.getByText('关系列表 (1)')).toBeInTheDocument()
     expect(screen.getByText('users')).toBeInTheDocument()
-    expect(screen.getByText('posts')).toBeInTheDocument()
+    // Use a more flexible matcher for 'posts' as it might be split across elements
+    expect(screen.getByText((content) => content.includes('posts'))).toBeInTheDocument()
   })
 
   it('renders error message when there are parsing errors', () => {

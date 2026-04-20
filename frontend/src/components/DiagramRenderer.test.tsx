@@ -1,13 +1,6 @@
 import React from 'react'
 import { render, screen } from '@testing-library/react'
-import { vi } from 'vitest'
 import DiagramRenderer from '../components/DiagramRenderer'
-
-// Mock mermaid
-vi.mock('mermaid', () => ({
-  initialize: vi.fn(),
-  render: vi.fn().mockResolvedValue({ svg: '<svg>Mock SVG</svg>' }),
-}))
 
 describe('DiagramRenderer Component', () => {
   const mockMermaidCode = 'erDiagram\n  User ||--o{ Post : creates'

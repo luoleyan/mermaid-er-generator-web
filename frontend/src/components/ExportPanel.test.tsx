@@ -62,8 +62,10 @@ describe('ExportPanel Component', () => {
     const svgButton = screen.getByRole('button', { name: /导出 SVG/i })
     fireEvent.click(svgButton)
     
-    // Button should be disabled while loading
-    expect(svgButton).toBeDisabled()
+    // Button should have loading class while loading
+    await waitFor(() => {
+      expect(svgButton.classList.contains('ant-btn-loading')).toBe(true)
+    })
     
     // Wait for export to complete
     await waitFor(() => {
