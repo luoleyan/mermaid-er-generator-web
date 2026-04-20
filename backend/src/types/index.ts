@@ -75,6 +75,10 @@ export interface Project {
   name: string;
   description?: string;
   sql: string;
-  created_at: string;
-  updated_at: string;
+  entities?: Entity[];
+  relationships?: Relationship[];
+  created_at?: string;
+  updated_at?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
