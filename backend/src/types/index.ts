@@ -73,6 +73,7 @@ export interface SQLParseResult {
 export interface Project {
   id: string;
   name: string;
+  description?: string;
   sql: string;
   created_at: string;
   updated_at: string;
