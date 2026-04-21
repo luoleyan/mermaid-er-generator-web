@@ -5,6 +5,8 @@ import {
   Space,
   Menu,
   Card,
+  Row,
+  Col,
   Table,
   Button,
   Form,
@@ -35,6 +37,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import SQLInput from './components/SQLInput'
 import MermaidPreviewPage from './components/MermaidPreviewPage'
 import MermaidWorkspace from './components/MermaidWorkspace'
+import DiagramRenderer from './components/DiagramRenderer'
 import { projectService } from './services/api'
 import { Project } from './types'
 
@@ -66,15 +69,138 @@ const WorkspacePage: React.FC = () => (
   </Space>
 )
 
-const HomePage: React.FC = () => (
-  <Card className="page-hero-card">
-    <Title level={3}>欢迎使用 Mermaid ER Generator</Title>
-    <Paragraph>
-      这是一个 SQL DDL 到 ER 图的转换工具。导航已整合为清晰工作流：
-      ER 工作台（解析/生成/导出一体）、Mermaid 预览、项目管理。
-    </Paragraph>
-  </Card>
-)
+const HOME_PREVIEW_SAMPLES: Array<{
+  title: string
+  desc: string
+  theme: string
+  code: string
+}> = [
+  {
+    title: 'Classic ER（概念评审）',
+    desc: '用于需求沟通与关系梳理，强调语义与业务结构。',
+    theme: 'default',
+    code: `erDiagram
+  USER {
+    number id PK
+    string email
+  }
+  ORDER {
+    number id PK
+    number user_id FK
+  }
+  PRODUCT {
+    number id PK
+    string name
+  }
+  USER ||--o{ ORDER : places
+  ORDER }o--|| PRODUCT : contains`
+  },
+  {
+    title: 'Physical ER（落库实现）',
+    desc: '用于开发联调与数据库评审，保留约束与字段细节。',
+    theme: 'neutral',
+    code: `erDiagram
+  USERS {
+    bigint id PK
+    varchar username UK
+    varchar email UK
+    timestamp created_at
+  }
+  ARTICLES {
+    bigint id PK
+    bigint author_id FK
+    varchar title
+    text content
+  }
+  USERS ||--o{ ARTICLES : writes`
+  },
+  {
+    title: 'Chen ER（教科书范式）',
+    desc: '用于概念建模教学与高层设计说明，语义表达最清晰。',
+    theme: 'forest',
+    code: `flowchart LR
+  E_USER["USER"]
+  A_USER_ID(("<u>id</u>"))
+  A_USER_NAME(("name"))
+  E_USER --- A_USER_ID
+  E_USER --- A_USER_NAME
+  E_ORDER["ORDER"]
+  A_ORDER_ID(("<u>id</u>"))
+  E_ORDER --- A_ORDER_ID
+  R_PLACES{"places"}
+  E_USER -- "1" --- R_PLACES
+  R_PLACES -- "N" --- E_ORDER`
+  }
+]
+
+const HomePage: React.FC = () => {
+  const navigate = useNavigate()
+
+  return (
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <Card className="page-hero-card">
+        <Space direction="vertical" size={10} style={{ width: '100%' }}>
+          <Title level={2} style={{ marginBottom: 0 }}>把数据库设计直接提升到专业交付水准</Title>
+          <Paragraph style={{ fontSize: 15, marginBottom: 0 }}>
+            Mermaid ER Generator 面向真实项目建模流程，支持 SQL 与 Mermaid 双输入、三种专业视图模式、
+            高质量导出与模板化标题栏，让团队从“可画图”升级到“可评审、可沉淀、可交付”。
+          </Paragraph>
+          <Space wrap>
+            <Button type="primary" size="large" onClick={() => navigate('/workspace')}>
+              立即开始建模
+            </Button>
+            <Button size="large" onClick={() => navigate('/mermaid-workspace')}>
+              打开 Mermaid 工作台
+            </Button>
+            <Button size="large" onClick={() => navigate('/mermaid-preview')}>
+              进入预览调试
+            </Button>
+          </Space>
+        </Space>
+      </Card>
+
+      <Card className="soft-card" title="核心能力">
+        <Space direction="vertical" size={14} style={{ width: '100%' }}>
+          <Paragraph style={{ marginBottom: 0 }}>
+            <strong>多视图专业绘图：</strong>Classic（概念）、Physical（物理）、Chen（严格概念）分层输出，符合不同阶段评审语境。
+          </Paragraph>
+          <Paragraph style={{ marginBottom: 0 }}>
+            <strong>工程级导出：</strong>支持 SVG/PNG/PDF，含清晰度档位、A4 横向策略、可配置标题模板与项目元信息。
+          </Paragraph>
+          <Paragraph style={{ marginBottom: 0 }}>
+            <strong>效率与体验：</strong>命令面板、快捷键、Mac 风交互、降噪渲染与 Dev 指标，保证高频使用也稳定顺手。
+          </Paragraph>
+        </Space>
+      </Card>
+
+      <Card className="soft-card" title="推荐使用路径">
+        <Space direction="vertical" size={8}>
+          <Paragraph style={{ marginBottom: 0 }}><strong>1.</strong> 在 <strong>ER 工作台</strong> 输入 SQL DDL，先完成结构校验与关系确认。</Paragraph>
+          <Paragraph style={{ marginBottom: 0 }}><strong>2.</strong> 切换到目标视图模式，检查概念语义与物理约束是否匹配当前评审目标。</Paragraph>
+          <Paragraph style={{ marginBottom: 0 }}><strong>3.</strong> 在导出面板配置标题模板与清晰度，产出可直接用于评审/文档的专业图件。</Paragraph>
+        </Space>
+      </Card>
+
+      <Card className="soft-card" title="示例成果预览（导出样张缩略图）">
+        <Row gutter={[16, 16]}>
+          {HOME_PREVIEW_SAMPLES.map((item) => (
+            <Col xs={24} md={8} key={item.title}>
+              <Card size="small" className="soft-card" title={item.title}>
+                <div style={{ marginBottom: 10 }}>
+                  <DiagramRenderer code={item.code} theme={item.theme} />
+                </div>
+                <Paragraph type="secondary" style={{ marginBottom: 0 }}>{item.desc}</Paragraph>
+              </Card>
+            </Col>
+          ))}
+        </Row>
+        <div style={{ marginTop: 14 }}>
+          <Button type="default" onClick={() => navigate('/workspace')}>查看并导出你的第一张专业样图</Button>
+        </div>
+      </Card>
+    </Space>
+  )
+}
 
 const ProjectsPage: React.FC = () => {
   const [projects, setProjects] = React.useState<Project[]>([])
@@ -179,12 +305,49 @@ const ProjectsPage: React.FC = () => {
 }
 
 const AboutPage: React.FC = () => (
-  <Card className="page-hero-card">
-    <Title level={3}>关于项目</Title>
-    <Paragraph>
-      前端基于 React + Ant Design + Vite，后端提供 SQL 解析、ER 图生成与导出 API。
-    </Paragraph>
-  </Card>
+  <Space direction="vertical" size="large" style={{ width: '100%' }}>
+    <Card className="page-hero-card">
+      <Title level={3} style={{ marginBottom: 8 }}>关于 Mermaid ER Generator</Title>
+      <Paragraph style={{ marginBottom: 0 }}>
+        这是一个面向专业建模与文档交付的 ER 图工程工具，目标不是“快速画图”本身，而是帮助团队建立
+        一致、严谨、可复用的数据库设计表达体系。
+      </Paragraph>
+    </Card>
+
+    <Card className="soft-card" title="架构与技术栈">
+      <Space direction="vertical" size={10} style={{ width: '100%' }}>
+        <Paragraph style={{ marginBottom: 0 }}>
+          <strong>前端：</strong>React + Ant Design + Vite，提供多工作台统一交互、命令面板与高密度操作体验。
+        </Paragraph>
+        <Paragraph style={{ marginBottom: 0 }}>
+          <strong>后端：</strong>Node.js + Express + TypeScript，负责 SQL/Mermaid 解析、模式转换、图形渲染与导出编排。
+        </Paragraph>
+        <Paragraph style={{ marginBottom: 0 }}>
+          <strong>图形引擎：</strong>Mermaid 渲染，结合服务端导出增强（标题栏、模板化元信息、清晰度档位、PDF 页面策略）。
+        </Paragraph>
+      </Space>
+    </Card>
+
+    <Card className="soft-card" title="设计原则">
+      <Space direction="vertical" size={10} style={{ width: '100%' }}>
+        <Paragraph style={{ marginBottom: 0 }}>
+          <strong>严谨性：</strong>不同视图模式对应不同信息密度，避免概念层与物理层语义混淆。
+        </Paragraph>
+        <Paragraph style={{ marginBottom: 0 }}>
+          <strong>可交付：</strong>导出结果可直接进入评审文档，标题模板支持组织化信息沉淀。
+        </Paragraph>
+        <Paragraph style={{ marginBottom: 0 }}>
+          <strong>可演进：</strong>参数化模板、可配置规则与工作台整合，支持持续扩展团队建模规范。
+        </Paragraph>
+      </Space>
+    </Card>
+
+    <Card className="soft-card" title="适用场景">
+      <Space direction="vertical" size={8}>
+        <Paragraph style={{ marginBottom: 0 }}>数据库建模评审、微服务边界梳理、遗留库重构分析、架构文档沉淀与跨角色沟通。</Paragraph>
+      </Space>
+    </Card>
+  </Space>
 )
 
 const App: React.FC = () => {
@@ -593,7 +756,7 @@ const App: React.FC = () => {
       onCancel={closeCommandPanel}
       footer={null}
       width={720}
-      destroyOnClose
+      destroyOnHidden
     >
       <Space direction="vertical" style={{ width: '100%' }}>
         <Input
@@ -686,7 +849,7 @@ const App: React.FC = () => {
       open={commandDrawerOpen}
       onClose={closeCommandDrawer}
       width="52vw"
-      destroyOnClose
+      destroyOnHidden
       className="mac-command-drawer"
     >
       <Space direction="vertical" style={{ width: '100%' }}>
@@ -786,7 +949,7 @@ const App: React.FC = () => {
       onCancel={() => setShortcutOpen(false)}
       footer={null}
       width={680}
-      destroyOnClose
+      destroyOnHidden
     >
       <List
         size="small"

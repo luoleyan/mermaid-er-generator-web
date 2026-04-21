@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react'
+import React, { useRef, useEffect, useMemo, useState } from 'react'
 import { Card, Spin, Alert, Typography } from 'antd'
 import mermaid from 'mermaid'
 
@@ -7,6 +7,7 @@ const { Text } = Typography
 interface DiagramRendererProps {
   code: string
   theme?: string
+  onRenderMetricsChange?: (metrics: { renderCount: number; skippedCount: number }) => void
 }
 
 const sanitizeMermaidERCode = (source: string): string => {
@@ -66,51 +67,83 @@ const sanitizeMermaidERCode = (source: string): string => {
   return normalizedLines.join('\n')
 }
 
-const DiagramRenderer: React.FC<DiagramRendererProps> = ({ code, theme = 'default' }) => {
+const DiagramRenderer: React.FC<DiagramRendererProps> = ({ code, theme = 'default', onRenderMetricsChange }) => {
   const diagramRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const renderSeqRef = useRef(0)
+  const lastRenderKeyRef = useRef<string>('')
+  const lastThemeRef = useRef<string>('')
+  const renderJobRef = useRef(0)
+  const renderCountRef = useRef(0)
+  const skippedCountRef = useRef(0)
+  const safeCode = useMemo(() => sanitizeMermaidERCode(code), [code])
 
   useEffect(() => {
-    if (!code || !diagramRef.current) return
+    if (!safeCode || !diagramRef.current) return
 
-    const renderDiagram = async () => {
+    let cancelled = false
+    const currentJob = ++renderJobRef.current
+    const timer = window.setTimeout(async () => {
+      if (cancelled || currentJob !== renderJobRef.current) return
       setLoading(true)
       setError(null)
 
       try {
         const isDarkUI = !!document.querySelector('.app-root.theme-dark')
         const resolvedTheme = theme === 'default' && isDarkUI ? 'dark' : theme
+        const renderKey = `${resolvedTheme}::${safeCode}`
+        if (lastRenderKeyRef.current === renderKey) {
+          skippedCountRef.current += 1
+          onRenderMetricsChange?.({
+            renderCount: renderCountRef.current,
+            skippedCount: skippedCountRef.current
+          })
+          setLoading(false)
+          return
+        }
 
-        // Initialize mermaid
-        mermaid.initialize({
-          startOnLoad: false,
-          securityLevel: 'loose',
-          theme: resolvedTheme,
-          fontFamily: 'sans-serif'
-        })
+        if (lastThemeRef.current !== resolvedTheme) {
+          mermaid.initialize({
+            startOnLoad: false,
+            securityLevel: 'loose',
+            theme: resolvedTheme,
+            fontFamily: 'sans-serif'
+          })
+          lastThemeRef.current = resolvedTheme
+        }
 
-        // Render diagram
-        const safeCode = sanitizeMermaidERCode(code)
         renderSeqRef.current += 1
         const renderId = `er-diagram-${Date.now()}-${renderSeqRef.current}`
         const { svg } = await mermaid.render(renderId, safeCode)
         
-        if (diagramRef.current) {
+        if (!cancelled && currentJob === renderJobRef.current && diagramRef.current) {
           diagramRef.current.innerHTML = ''
           diagramRef.current.innerHTML = svg
+          lastRenderKeyRef.current = renderKey
+          renderCountRef.current += 1
+          onRenderMetricsChange?.({
+            renderCount: renderCountRef.current,
+            skippedCount: skippedCountRef.current
+          })
         }
       } catch (err) {
         console.error('Error rendering diagram:', err)
-        setError(err instanceof Error ? err.message : 'Failed to render diagram')
+        if (!cancelled && currentJob === renderJobRef.current) {
+          setError(err instanceof Error ? err.message : 'Failed to render diagram')
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled && currentJob === renderJobRef.current) {
+          setLoading(false)
+        }
       }
-    }
+    }, 120)
 
-    renderDiagram()
-  }, [code, theme])
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [safeCode, theme])
 
   if (loading) {
     return (
