@@ -58,9 +58,14 @@ const MermaidPreviewPage: React.FC = () => {
   const [renderCode, setRenderCode] = React.useState(sampleByMode.classic)
   const [convertedCode, setConvertedCode] = React.useState(sampleByMode.classic)
   const [theme, setTheme] = React.useState('default')
+  const [loading, setLoading] = React.useState(false)
   const [activeSection, setActiveSection] = React.useState<'source' | 'result'>('source')
+  const [transformCount, setTransformCount] = React.useState(0)
+  const [skippedCount, setSkippedCount] = React.useState(0)
+  const [renderMetrics, setRenderMetrics] = React.useState({ renderCount: 0, skippedCount: 0 })
   const sourceRef = React.useRef<HTMLDivElement | null>(null)
   const resultRef = React.useRef<HTMLDivElement | null>(null)
+  const lastTransformSignatureRef = React.useRef('')
 
   const scrollToSection = (ref: React.RefObject<HTMLDivElement>) => {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -75,36 +80,20 @@ const MermaidPreviewPage: React.FC = () => {
     }
   }
 
-  const copyConverted = async () => {
+  const copyConverted = React.useCallback(async () => {
     try {
       await navigator.clipboard.writeText(convertedCode)
       notify.success('转换后代码已复制')
     } catch (error) {
       notify.error('复制失败，请手动复制')
     }
-  }
+  }, [convertedCode])
 
   const handleClear = () => {
     setDraftCode('')
     setRenderCode('')
     setConvertedCode('')
   }
-
-  React.useEffect(() => {
-    const onHotkey = (event: KeyboardEvent) => {
-      const meta = event.ctrlKey || event.metaKey
-      if (meta && event.key === 'Enter') {
-        event.preventDefault()
-        void handleRender()
-      }
-      if (meta && event.shiftKey && event.key.toLowerCase() === 'c') {
-        event.preventDefault()
-        void copyConverted()
-      }
-    }
-    window.addEventListener('keydown', onHotkey)
-    return () => window.removeEventListener('keydown', onHotkey)
-  }, [draftCode, viewMode, theme, chenPinnedEntities, convertedCode])
 
   React.useEffect(() => {
     const sections: Array<{ key: 'source' | 'result'; ref: React.RefObject<HTMLDivElement> }> = [
@@ -128,6 +117,22 @@ const MermaidPreviewPage: React.FC = () => {
   }, [])
 
   const handleRender = React.useCallback(async () => {
+    if (loading) {
+      setSkippedCount((prev) => prev + 1)
+      return
+    }
+    const signature = JSON.stringify({
+      code: draftCode.trim(),
+      viewMode,
+      theme,
+      chenPinnedEntities: [...chenPinnedEntities].sort()
+    })
+    if (signature === lastTransformSignatureRef.current) {
+      setSkippedCount((prev) => prev + 1)
+      return
+    }
+    setLoading(true)
+    setTransformCount((prev) => prev + 1)
     try {
       const response = await sqlService.transformPreview(
         draftCode,
@@ -138,6 +143,7 @@ const MermaidPreviewPage: React.FC = () => {
       if (response.success && response.data?.diagramCode) {
         setRenderCode(response.data.diagramCode)
         setConvertedCode(response.data.diagramCode)
+        lastTransformSignatureRef.current = signature
         const warning = (response.data as { warning?: string }).warning
         if (warning) {
           notify.warning(`转换降级: ${warning}`)
@@ -152,8 +158,26 @@ const MermaidPreviewPage: React.FC = () => {
       setRenderCode(draftCode)
       setConvertedCode(draftCode)
       notify.error(axiosError.response?.data?.error || '转换失败，请检查代码格式')
+    } finally {
+      setLoading(false)
     }
-  }, [draftCode, viewMode, theme, chenPinnedEntities])
+  }, [draftCode, viewMode, theme, chenPinnedEntities, loading])
+
+  React.useEffect(() => {
+    const onHotkey = (event: KeyboardEvent) => {
+      const meta = event.ctrlKey || event.metaKey
+      if (meta && event.key === 'Enter') {
+        event.preventDefault()
+        void handleRender()
+      }
+      if (meta && event.shiftKey && event.key.toLowerCase() === 'c') {
+        event.preventDefault()
+        void copyConverted()
+      }
+    }
+    window.addEventListener('keydown', onHotkey)
+    return () => window.removeEventListener('keydown', onHotkey)
+  }, [handleRender, copyConverted])
 
   React.useEffect(() => {
     const onGlobalRender = () => {
@@ -170,6 +194,11 @@ const MermaidPreviewPage: React.FC = () => {
           <Button size="small" type={activeSection === 'source' ? 'primary' : 'default'} onClick={() => scrollToSection(sourceRef)}>源码输入</Button>
           <Button size="small" type={activeSection === 'result' ? 'primary' : 'default'} onClick={() => scrollToSection(resultRef)}>图与代码</Button>
           <span className="hotkey-hint">快捷键：Ctrl/Cmd + Enter 渲染，Ctrl/Cmd + Shift + C 复制结果</span>
+          {import.meta.env.DEV && (
+            <span className="hotkey-hint">
+              dev metrics: render {renderMetrics.renderCount} / transform {transformCount} / skipped {skippedCount + renderMetrics.skippedCount}
+            </span>
+          )}
         </Space>
       </div>
       <div ref={sourceRef}>
@@ -226,7 +255,7 @@ const MermaidPreviewPage: React.FC = () => {
               )}
               </div>
               <div className="toolbar-row">
-              <Button type="primary" onClick={handleRender}>
+              <Button type="primary" onClick={handleRender} loading={loading}>
                 渲染预览
               </Button>
               <Button
@@ -253,7 +282,11 @@ const MermaidPreviewPage: React.FC = () => {
       </div>
 
       <div ref={resultRef}>
-      <DiagramRenderer code={renderCode} theme={theme} />
+      <DiagramRenderer
+        code={renderCode}
+        theme={theme}
+        onRenderMetricsChange={(metrics) => setRenderMetrics(metrics)}
+      />
 
       <Card title="转换后代码" className="soft-card" extra={<Button size="small" icon={<CopyOutlined />} onClick={() => void copyConverted()}>复制</Button>}>
         <TextArea

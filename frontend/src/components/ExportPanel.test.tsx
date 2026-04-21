@@ -37,7 +37,22 @@ describe('ExportPanel Component', () => {
     fireEvent.click(screen.getByText('导出 SVG'))
     
     await waitFor(() => {
-      expect(exportService.exportSVG).toHaveBeenCalledWith('CREATE TABLE users (id INT);', 'default')
+      expect(exportService.exportSVG).toHaveBeenCalledWith(
+        'CREATE TABLE users (id INT);',
+        'default',
+        'classic',
+        [],
+        {
+          schemaName: 'default',
+          imageScale: 2,
+          includeProjectMeta: false,
+          projectName: '',
+          version: '',
+          titleTemplateLocale: 'zh',
+          titleFieldOrder: ['mode', 'schema', 'exported', 'project', 'version'],
+          showUTC: true
+        }
+      )
     })
   })
 

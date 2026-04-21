@@ -2,7 +2,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { Entity, Relationship } from '../types';
 import sharp from 'sharp';
 import PDFDocument from 'pdfkit';
-import SVGtoPDF from 'svg-to-pdfkit';
 
 export interface MermaidConfig {
   theme: string;
@@ -10,6 +9,19 @@ export interface MermaidConfig {
   fontFamily: string;
   viewMode?: 'classic' | 'physical' | 'chen';
   chenPinnedEntities?: string[];
+  exportOptions?: {
+    schemaName?: string;
+    includeTitleBar?: boolean;
+    imageScale?: 1 | 2 | 3;
+    exportedAt?: Date;
+    projectName?: string;
+    version?: string;
+    includeProjectMeta?: boolean;
+    pdfPageStrategy?: 'original' | 'a4-landscape';
+    titleTemplateLocale?: 'zh' | 'en';
+    titleFieldOrder?: Array<'mode' | 'schema' | 'exported' | 'project' | 'version'>;
+    showUTC?: boolean;
+  };
 }
 
 type MermaidInstance = (typeof import('mermaid'))['default'];
@@ -17,8 +29,124 @@ type MermaidInstance = (typeof import('mermaid'))['default'];
 export class MermaidService {
   private mermaid: MermaidInstance | null = null;
 
+  /** Serializes server-side mermaid renders; each run temporarily installs JSDOM globals. */
+  private static browserGlobalsChain: Promise<void> = Promise.resolve();
+
   private static readonly ASSOCIATIVE_TABLE_MIN_FOREIGN_KEYS = 2;
   private static readonly CHEN_PRIMARY_ANCHOR_PINNED = ['USERS', 'ARTICLES'];
+
+  /**
+   * Mermaid's render path expects browser globals (`document`, etc.). Other concurrent
+   * requests must not interleave mutating those globals, so runs are queued.
+   */
+  private async runWithBrowserGlobals<T>(fn: () => Promise<T>): Promise<T> {
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const prev = MermaidService.browserGlobalsChain;
+    MermaidService.browserGlobalsChain = ready;
+    await prev;
+
+    const g = globalThis as unknown as Record<string, unknown>;
+    const keys = [
+      'window',
+      'document',
+      'navigator',
+      'SVGElement',
+      'HTMLElement',
+      'Element',
+      'Node'
+    ] as const;
+    const previousDescriptors = new Map<string, PropertyDescriptor | undefined>();
+    for (const k of keys) {
+      previousDescriptors.set(k, Object.getOwnPropertyDescriptor(globalThis, k));
+    }
+    const install = (name: string, value: unknown) => {
+      Object.defineProperty(globalThis, name, {
+        value,
+        configurable: true,
+        writable: true,
+        enumerable: true
+      });
+    };
+    try {
+      const { JSDOM } = await import('jsdom');
+      const dom = new JSDOM('<!DOCTYPE html><html><head></head><body></body></html>', {
+        pretendToBeVisual: true,
+        url: 'http://localhost/'
+      });
+      const w = dom.window;
+      this.patchJsdomWindowForMermaid(w);
+      install('window', w);
+      install('document', w.document);
+      install('navigator', w.navigator);
+      install('SVGElement', w.SVGElement);
+      install('HTMLElement', w.HTMLElement);
+      install('Element', w.Element);
+      install('Node', w.Node);
+      return await fn();
+    } finally {
+      for (const k of keys) {
+        const prev = previousDescriptors.get(k);
+        if (prev) {
+          Object.defineProperty(globalThis, k, prev);
+        } else {
+          delete g[k];
+        }
+      }
+      release();
+    }
+  }
+
+  /** JSDOM does not implement SVG text layout APIs Mermaid's ER renderer relies on. */
+  private patchJsdomWindowForMermaid(w: import('jsdom').DOMWindow): void {
+    const ns = 'http://www.w3.org/2000/svg';
+    const root = w.document.createElementNS(ns, 'svg');
+    const label = w.document.createElementNS(ns, 'text');
+    root.appendChild(label);
+    w.document.body.appendChild(root);
+
+    const rect = (x: number, y: number, width: number, height: number): DOMRect => {
+      if (typeof w.DOMRect === 'function') {
+        return new w.DOMRect(x, y, width, height);
+      }
+      const bottom = y + height;
+      const right = x + width;
+      return {
+        x,
+        y,
+        width,
+        height,
+        top: y,
+        left: x,
+        bottom,
+        right,
+        toJSON() {
+          return { x, y, width, height, top: y, left: x, bottom, right };
+        }
+      } as DOMRect;
+    };
+
+    // JSDOM often implements `<text>` / `<g>` as plain `SVGElement` (not `SVGGraphicsElement`),
+    // so only patching SVGGraphicsElement leaves `getBBox` missing on those nodes.
+    const svgElementProto = w.SVGElement.prototype as unknown as {
+      getBBox?: () => DOMRect;
+      getComputedTextLength?: () => number;
+    };
+    svgElementProto.getBBox = function getBBox() {
+      return rect(0, 0, 200, 48);
+    };
+    svgElementProto.getComputedTextLength = function getComputedTextLength(this: SVGElement) {
+      const text = this.textContent ?? '';
+      return Math.max(1, text.length * 7.2);
+    };
+    if (w.SVGSVGElement) {
+      w.SVGSVGElement.prototype.getBBox = function getBBox() {
+        return rect(0, 0, 1200, 800);
+      };
+    }
+  }
 
   private async getMermaid(): Promise<MermaidInstance> {
     if (!this.mermaid) {
@@ -58,6 +186,7 @@ export class MermaidService {
       viewMode === 'classic'
         ? this.normalizeForClassicER(entities, relationships)
         : { displayEntities: entities, displayRelationships: relationships };
+    const profile = this.getERViewProfile(viewMode);
     let code = 'erDiagram\n';
     
     // Generate entity definitions
@@ -65,7 +194,10 @@ export class MermaidService {
       code += `  ${entity.name} {\n`;
       
       for (const column of entity.columns) {
-        let columnDef = `    ${column.type} ${column.name}`;
+        const normalizedType = profile.includePhysicalDetails
+          ? (column.type || 'string')
+          : this.toConceptualType(column.type);
+        let columnDef = `    ${normalizedType} ${column.name}`;
         
         if (column.primaryKey) {
           columnDef += ' PK';
@@ -75,15 +207,15 @@ export class MermaidService {
           columnDef += ' FK';
         }
 
-        if (column.unique && !column.primaryKey) {
+        if (profile.includePhysicalDetails && column.unique && !column.primaryKey) {
           columnDef += ' UK';
         }
         
-        if (!column.nullable && !column.primaryKey) {
+        if (profile.includePhysicalDetails && !column.nullable && !column.primaryKey) {
           columnDef += ' NOT NULL';
         }
 
-        if (column.defaultValue) {
+        if (profile.includePhysicalDetails && column.defaultValue) {
           const normalizedDefault = this.normalizeDefaultValueForMermaid(column.defaultValue);
           if (normalizedDefault) {
             columnDef += ` DEFAULT_${normalizedDefault}`;
@@ -98,11 +230,9 @@ export class MermaidService {
 
     // Generate relationships
     for (const relationship of displayRelationships) {
-      const fromCardinality = this.getCardinality(relationship.type, 'from');
-      const toCardinality = this.getCardinality(relationship.type, 'to');
-      const relationName = relationship.name || `${relationship.to}.${relationship.toColumn || '?'} -> ${relationship.from}.${relationship.fromColumn || '?'}`;
-
-      code += `  ${relationship.from} ${fromCardinality}--${toCardinality} ${relationship.to} : "${relationName}"\n`;
+      const cardinality = this.getERCardinality(relationship.type);
+      const relationName = this.getRelationshipLabel(relationship, profile.includePhysicalDetails);
+      code += `  ${relationship.from} ${cardinality.left}--${cardinality.right} ${relationship.to} : "${relationName}"\n`;
     }
 
     return code;
@@ -127,38 +257,23 @@ export class MermaidService {
     chenPinnedEntities: string[] = []
   ): string {
     const { displayEntities, displayRelationships } = this.normalizeForClassicER(entities, relationships);
+    const columns = this.buildChenEntityAnchorColumns(displayEntities, displayRelationships, chenPinnedEntities);
+    const rankMap = new Map<string, number>();
+    for (const entity of columns.primary) rankMap.set(entity, 0);
+    for (const entity of columns.core) rankMap.set(entity, 1);
+    for (const entity of columns.edge) rankMap.set(entity, 2);
+    const chenAttributes = this.buildChenAttributes(displayEntities, displayRelationships);
     const lines: string[] = ['flowchart LR'];
 
     for (const entity of displayEntities) {
       const entityNode = this.chenEntityNodeId(entity.name);
-      const leftBucket = `${entityNode}_ATTR_LEFT`;
-      const rightBucket = `${entityNode}_ATTR_RIGHT`;
-      const [leftColumns, rightColumns] = this.splitColumnsForChen(entity.columns);
+      lines.push(`  ${entityNode}["${entity.name}"]`);
+      const [leftColumns, rightColumns] = this.splitColumnsForChen(chenAttributes.get(entity.name) || []);
 
-      // Entity centered, attributes distributed on both sides for textbook-like Chen look.
-      lines.push(`  subgraph ${entityNode}_GROUP[" "]`);
-      lines.push('    direction LR');
-      lines.push(`    subgraph ${leftBucket}[" "]`);
-      lines.push('      direction TB');
-      for (const column of leftColumns) {
+      for (const column of [...leftColumns, ...rightColumns]) {
         const attrNode = this.chenEntityAttrNodeId(entity.name, column.name);
         const attrLabel = column.primaryKey ? `<u>${column.name}</u>` : column.name;
-        lines.push(`      ${attrNode}(("${attrLabel}"))`);
-      }
-      lines.push('    end');
-      lines.push(`    ${entityNode}["${entity.name}"]`);
-      lines.push(`    subgraph ${rightBucket}[" "]`);
-      lines.push('      direction TB');
-      for (const column of rightColumns) {
-        const attrNode = this.chenEntityAttrNodeId(entity.name, column.name);
-        const attrLabel = column.primaryKey ? `<u>${column.name}</u>` : column.name;
-        lines.push(`      ${attrNode}(("${attrLabel}"))`);
-      }
-      lines.push('    end');
-      lines.push('  end');
-
-      for (const column of entity.columns) {
-        const attrNode = this.chenEntityAttrNodeId(entity.name, column.name);
+        lines.push(`  ${attrNode}(("${attrLabel}"))`);
         lines.push(`  ${entityNode} --- ${attrNode}`);
       }
     }
@@ -174,26 +289,46 @@ export class MermaidService {
         relationship.to,
         relationshipLabel
       );
-      const rowNode = `${relationshipNode}_ROW`;
-      const oriented = this.orientChenRelationship(relationship);
+      const oriented = this.orientChenRelationship(relationship, rankMap);
 
       // Relationship in the middle with strict Chen semantics:
       // entity-relationship links + cardinality only.
-      lines.push(`  subgraph ${relationshipNode}_GROUP[" "]`);
-      lines.push('    direction TB');
-      lines.push(`    subgraph ${rowNode}[" "]`);
-      lines.push('      direction LR');
-      lines.push(`      ${oriented.leftEntityNode}["${oriented.leftEntityLabel}"]`);
-      lines.push(`      ${relationshipNode}{"${relationshipLabel}"}`);
-      lines.push(`      ${oriented.rightEntityNode}["${oriented.rightEntityLabel}"]`);
-      lines.push('    end');
-      lines.push('  end');
+      lines.push(`  ${relationshipNode}{"${relationshipLabel}"}`);
 
       lines.push(`  ${oriented.leftEntityNode} -- "${oriented.leftCardinality}" --- ${relationshipNode}`);
       lines.push(`  ${relationshipNode} -- "${oriented.rightCardinality}" --- ${oriented.rightEntityNode}`);
     }
 
     return lines.join('\n');
+  }
+
+  private buildChenAttributes(entities: Entity[], relationships: Relationship[]): Map<string, Entity['columns']> {
+    const fkColumnNames = new Map<string, Set<string>>();
+    for (const entity of entities) {
+      fkColumnNames.set(entity.name, new Set());
+    }
+    for (const relationship of relationships) {
+      if (relationship.fromColumn) {
+        fkColumnNames.get(relationship.from)?.add(relationship.fromColumn);
+      }
+      if (relationship.toColumn) {
+        fkColumnNames.get(relationship.to)?.add(relationship.toColumn);
+      }
+    }
+
+    const result = new Map<string, Entity['columns']>();
+    for (const entity of entities) {
+      const suppressedFk = fkColumnNames.get(entity.name) || new Set<string>();
+      const filtered = entity.columns.filter((column) => !suppressedFk.has(column.name));
+      result.set(
+        entity.name,
+        filtered.sort((a, b) => {
+          if (!!a.primaryKey !== !!b.primaryKey) return a.primaryKey ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        })
+      );
+    }
+    return result;
   }
 
   private buildChenEntityAnchorColumns(
@@ -276,7 +411,10 @@ export class MermaidService {
     }
   }
 
-  private orientChenRelationship(relationship: Relationship): {
+  private orientChenRelationship(
+    relationship: Relationship,
+    rankMap: Map<string, number>
+  ): {
     leftEntityNode: string;
     rightEntityNode: string;
     leftEntityLabel: string;
@@ -290,7 +428,11 @@ export class MermaidService {
     const fromNode = this.chenEntityNodeId(fromName);
     const toNode = this.chenEntityNodeId(toName);
 
-    if (fromName.localeCompare(toName) <= 0) {
+    const fromRank = rankMap.get(fromName) ?? 1;
+    const toRank = rankMap.get(toName) ?? 1;
+    const keepFromLeft = fromRank < toRank || (fromRank === toRank && fromName.localeCompare(toName) <= 0);
+
+    if (keepFromLeft) {
       return {
         leftEntityNode: fromNode,
         rightEntityNode: toNode,
@@ -447,17 +589,45 @@ export class MermaidService {
     return `${ends}|${relationship.type}|${relationship.name || ''}`;
   }
 
-  private getCardinality(type: string, direction: 'from' | 'to'): string {
+  private getERCardinality(type: string): { left: string; right: string } {
     switch (type) {
       case 'one-to-one':
-        return '||';
+        return { left: '||', right: '||' };
       case 'one-to-many':
-        return direction === 'from' ? '||' : 'o{';
+        return { left: '||', right: 'o{' };
+      case 'many-to-one':
+        return { left: '}o', right: '||' };
       case 'many-to-many':
-        return direction === 'from' ? 'o{' : '}o';
+        return { left: '}o', right: 'o{' };
       default:
-        return '--';
+        return { left: '||', right: 'o{' };
     }
+  }
+
+  private getERViewProfile(viewMode: 'classic' | 'physical' | 'chen'): { includePhysicalDetails: boolean } {
+    if (viewMode === 'physical') {
+      return { includePhysicalDetails: true };
+    }
+    return { includePhysicalDetails: false };
+  }
+
+  private getRelationshipLabel(relationship: Relationship, includePhysicalDetails: boolean): string {
+    if (relationship.name && relationship.name.trim().length > 0) {
+      return relationship.name;
+    }
+    if (includePhysicalDetails) {
+      return `${relationship.to}.${relationship.toColumn || '?'} -> ${relationship.from}.${relationship.fromColumn || '?'}`;
+    }
+    return `${relationship.from} to ${relationship.to}`;
+  }
+
+  private toConceptualType(physicalType?: string): string {
+    const token = (physicalType || '').toLowerCase();
+    if (/int|numeric|decimal|float|double|real|serial/.test(token)) return 'number';
+    if (/bool/.test(token)) return 'boolean';
+    if (/date|time|year/.test(token)) return 'datetime';
+    if (/char|text|json|uuid|enum|set/.test(token)) return 'string';
+    return 'string';
   }
 
   private async generateSVG(
@@ -466,10 +636,50 @@ export class MermaidService {
     config: MermaidConfig
   ): Promise<string> {
     const mermaidCode = this.generateDiagramCode(entities, relationships, config);
-    const mermaid = await this.getMermaid();
-    this.initMermaidConfig(mermaid, config);
-    const { svg } = await mermaid.render(`er-diagram-${uuidv4()}`, mermaidCode);
-    return svg;
+    return this.renderMermaidCodeToSVG(
+      mermaidCode,
+      config,
+      config.exportOptions?.schemaName || this.inferSchemaName(entities)
+    );
+  }
+
+  private async renderMermaidCodeToSVG(
+    mermaidCode: string,
+    config: MermaidConfig,
+    schemaNameForTitle = 'default'
+  ): Promise<string> {
+    const { svg } = await this.runWithBrowserGlobals(async () => {
+      const mermaid = await this.getMermaid();
+      this.initMermaidConfig(mermaid, config);
+      const diagramId = `er-diagram-${uuidv4()}`;
+      return mermaid.render(diagramId, mermaidCode);
+    });
+    const includeTitleBar = config.exportOptions?.includeTitleBar === true;
+    if (!includeTitleBar) {
+      return svg;
+    }
+
+    const title = this.buildExportTitle(
+      config.viewMode || 'classic',
+      config.exportOptions?.schemaName || schemaNameForTitle,
+      config.exportOptions?.exportedAt || new Date(),
+      config.exportOptions?.includeProjectMeta === true
+        ? this.buildProjectMeta(config.exportOptions?.projectName, config.exportOptions?.version)
+        : undefined,
+      this.buildTitleTemplateOptions(
+        config.exportOptions?.titleTemplateLocale,
+        config.exportOptions?.titleFieldOrder,
+        config.exportOptions?.showUTC
+      )
+    );
+    return this.withExportTitleBar(svg, title);
+  }
+
+  async renderCodeToSVG(
+    mermaidCode: string,
+    config: MermaidConfig = { theme: 'default', securityLevel: 'loose', fontFamily: 'sans-serif', viewMode: 'classic' }
+  ): Promise<string> {
+    return this.renderMermaidCodeToSVG(mermaidCode, config, config.exportOptions?.schemaName || 'default');
   }
 
   async generateDiagram(
@@ -490,7 +700,17 @@ export class MermaidService {
     config: MermaidConfig = { theme: 'default', securityLevel: 'loose', fontFamily: 'sans-serif', viewMode: 'classic' }
   ): Promise<Buffer> {
     const svg = await this.generateSVG(entities, relationships, config);
-    return sharp(Buffer.from(svg)).png().toBuffer();
+    const scale = this.normalizeExportScale(config.exportOptions?.imageScale);
+    return sharp(Buffer.from(svg), { density: 96 * scale }).png().toBuffer();
+  }
+
+  async renderCodeToPNG(
+    mermaidCode: string,
+    config: MermaidConfig = { theme: 'default', securityLevel: 'loose', fontFamily: 'sans-serif', viewMode: 'classic' }
+  ): Promise<Buffer> {
+    const svg = await this.renderCodeToSVG(mermaidCode, config);
+    const scale = this.normalizeExportScale(config.exportOptions?.imageScale);
+    return sharp(Buffer.from(svg), { density: 96 * scale }).png().toBuffer();
   }
 
   async renderToPDF(
@@ -499,25 +719,245 @@ export class MermaidService {
     config: MermaidConfig = { theme: 'default', securityLevel: 'loose', fontFamily: 'sans-serif', viewMode: 'classic' }
   ): Promise<Buffer> {
     const svg = await this.generateSVG(entities, relationships, config);
-    const png = await sharp(Buffer.from(svg)).png().toBuffer();
-    const metadata = await sharp(png).metadata();
+    return this.renderSVGToPDF(svg, config);
+  }
+
+  async renderCodeToPDF(
+    mermaidCode: string,
+    config: MermaidConfig = { theme: 'default', securityLevel: 'loose', fontFamily: 'sans-serif', viewMode: 'classic' }
+  ): Promise<Buffer> {
+    const svg = await this.renderCodeToSVG(mermaidCode, config);
+    return this.renderSVGToPDF(svg, config);
+  }
+
+  private async renderSVGToPDF(svg: string, config: MermaidConfig): Promise<Buffer> {
+    const scale = this.normalizeExportScale(config.exportOptions?.imageScale);
+    const basePng = await sharp(Buffer.from(svg), { density: 96 }).png().toBuffer();
+    const hiResPng = await sharp(Buffer.from(svg), { density: 96 * scale }).png().toBuffer();
+    const metadata = await sharp(basePng).metadata();
     const width = metadata.width ?? 1200;
     const height = metadata.height ?? 800;
+    const pdfPageStrategy = config.exportOptions?.pdfPageStrategy || 'original';
 
     return new Promise<Buffer>((resolve, reject) => {
       const chunks: Buffer[] = [];
-      const doc = new PDFDocument({
-        size: [Math.max(width, 300), Math.max(height, 300)],
-        margin: 0
-      });
+      const doc =
+        pdfPageStrategy === 'a4-landscape'
+          ? new PDFDocument({
+              size: 'A4',
+              layout: 'landscape',
+              margin: 24
+            })
+          : new PDFDocument({
+              size: [Math.max(width, 300), Math.max(height, 300)],
+              margin: 0
+            });
 
       doc.on('data', (chunk: Buffer) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      SVGtoPDF(doc, svg, 0, 0, { width, height, assumePt: true });
+      if (pdfPageStrategy === 'a4-landscape') {
+        const pageWidth = doc.page.width;
+        const pageHeight = doc.page.height;
+        const maxWidth = pageWidth - 48;
+        const maxHeight = pageHeight - 48;
+        const ratio = Math.min(maxWidth / width, maxHeight / height);
+        const drawWidth = Math.max(1, Math.round(width * ratio));
+        const drawHeight = Math.max(1, Math.round(height * ratio));
+        const x = Math.round((pageWidth - drawWidth) / 2);
+        const y = Math.round((pageHeight - drawHeight) / 2);
+        doc.image(hiResPng, x, y, { width: drawWidth, height: drawHeight });
+      } else {
+        doc.image(hiResPng, 0, 0, { width, height });
+      }
       doc.end();
     });
+  }
+
+  private normalizeExportScale(scale?: number): 1 | 2 | 3 {
+    if (scale === 2 || scale === 3) return scale;
+    return 1;
+  }
+
+  private inferSchemaName(entities: Entity[]): string {
+    if (entities.length === 0) return 'default';
+    const prefixes = new Set<string>();
+    for (const entity of entities) {
+      const parts = entity.name.split('.');
+      if (parts.length > 1) {
+        prefixes.add(parts[0]);
+      }
+    }
+    if (prefixes.size === 1) {
+      return [...prefixes][0];
+    }
+    return 'default';
+  }
+
+  private buildExportTitle(
+    viewMode: 'classic' | 'physical' | 'chen',
+    schemaName: string,
+    exportedAt: Date,
+    projectMeta?: {
+      projectName?: string;
+      version?: string;
+    },
+    titleTemplateOptions?: {
+      locale?: 'zh' | 'en';
+      fieldOrder?: Array<'mode' | 'schema' | 'exported' | 'project' | 'version'>;
+      showUTC?: boolean;
+    }
+  ): string {
+    const locale = titleTemplateOptions?.locale === 'zh' ? 'zh' : 'en';
+    const showUTC = titleTemplateOptions?.showUTC !== false;
+    const modeLabel =
+      viewMode === 'classic' ? (locale === 'zh' ? '经典 ER' : 'Classic ER')
+      : viewMode === 'physical' ? (locale === 'zh' ? '物理 ER' : 'Physical ER')
+      : (locale === 'zh' ? 'Chen ER' : 'Chen ER');
+    const timestamp = showUTC
+      ? `${exportedAt.toISOString().replace('T', ' ').slice(0, 19)} UTC`
+      : exportedAt.toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US', { hour12: false });
+    const labels = locale === 'zh'
+      ? { mode: '模式', schema: 'Schema', exported: '导出时间', project: '项目', version: '版本' }
+      : { mode: 'mode', schema: 'schema', exported: 'exported', project: 'project', version: 'version' };
+    const fieldOrder = this.normalizeTitleFieldOrder(titleTemplateOptions?.fieldOrder);
+    const valueByField: Record<'mode' | 'schema' | 'exported' | 'project' | 'version', string | null> = {
+      mode: modeLabel,
+      schema: schemaName || 'default',
+      exported: timestamp,
+      project: projectMeta?.projectName?.trim() || null,
+      version: projectMeta?.version?.trim() || null
+    };
+
+    const parts: string[] = [];
+    for (const field of fieldOrder) {
+      const value = valueByField[field];
+      if (!value) continue;
+      parts.push(`${labels[field]}: ${value}`);
+    }
+    return parts.join(' | ');
+  }
+
+  private normalizeTitleFieldOrder(
+    fields?: Array<'mode' | 'schema' | 'exported' | 'project' | 'version'>
+  ): Array<'mode' | 'schema' | 'exported' | 'project' | 'version'> {
+    const defaults: Array<'mode' | 'schema' | 'exported' | 'project' | 'version'> = ['mode', 'schema', 'exported', 'project', 'version'];
+    if (!Array.isArray(fields) || fields.length === 0) {
+      return defaults;
+    }
+    const allowed = new Set(defaults);
+    const normalized = fields.filter((item): item is 'mode' | 'schema' | 'exported' | 'project' | 'version' => allowed.has(item));
+    const unique = [...new Set(normalized)];
+    for (const item of defaults) {
+      if (!unique.includes(item)) unique.push(item);
+    }
+    return unique;
+  }
+
+  private buildTitleTemplateOptions(
+    locale?: 'zh' | 'en',
+    fieldOrder?: Array<'mode' | 'schema' | 'exported' | 'project' | 'version'>,
+    showUTC?: boolean
+  ): {
+    locale?: 'zh' | 'en';
+    fieldOrder?: Array<'mode' | 'schema' | 'exported' | 'project' | 'version'>;
+    showUTC?: boolean;
+  } | undefined {
+    const options: {
+      locale?: 'zh' | 'en';
+      fieldOrder?: Array<'mode' | 'schema' | 'exported' | 'project' | 'version'>;
+      showUTC?: boolean;
+    } = {};
+
+    if (locale) {
+      options.locale = locale;
+    }
+    if (fieldOrder && fieldOrder.length > 0) {
+      options.fieldOrder = fieldOrder;
+    }
+    if (typeof showUTC === 'boolean') {
+      options.showUTC = showUTC;
+    }
+
+    return Object.keys(options).length > 0 ? options : undefined;
+  }
+
+  private buildProjectMeta(
+    projectName?: string,
+    version?: string
+  ): { projectName?: string; version?: string } | undefined {
+    const meta: { projectName?: string; version?: string } = {};
+    const normalizedProject = projectName?.trim();
+    const normalizedVersion = version?.trim();
+
+    if (normalizedProject) {
+      meta.projectName = normalizedProject;
+    }
+    if (normalizedVersion) {
+      meta.version = normalizedVersion;
+    }
+
+    return Object.keys(meta).length > 0 ? meta : undefined;
+  }
+
+  private withExportTitleBar(svg: string, title: string): string {
+    const openTagMatch = svg.match(/^<svg\b[^>]*>/);
+    if (!openTagMatch) return svg;
+
+    const openTag = openTagMatch[0];
+    const closeTag = '</svg>';
+    const closeIndex = svg.lastIndexOf(closeTag);
+    if (closeIndex < 0) return svg;
+
+    const inner = svg.slice(openTag.length, closeIndex);
+    const width = this.extractSvgDimension(svg, 'width', 1200);
+    const height = this.extractSvgDimension(svg, 'height', 800);
+    const headerHeight = 56;
+    const escapedTitle = this.escapeXml(title);
+
+    return [
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height + headerHeight}" viewBox="0 0 ${width} ${height + headerHeight}">`,
+      '  <defs>',
+      '    <linearGradient id="exportTitleBarGradient" x1="0" y1="0" x2="1" y2="0">',
+      '      <stop offset="0%" stop-color="#f6f9ff"/>',
+      '      <stop offset="100%" stop-color="#edf3ff"/>',
+      '    </linearGradient>',
+      '  </defs>',
+      `  <rect x="0" y="0" width="${width}" height="${headerHeight}" fill="url(#exportTitleBarGradient)"/>`,
+      `  <line x1="0" y1="${headerHeight}" x2="${width}" y2="${headerHeight}" stroke="#d2ddf2" stroke-width="1"/>`,
+      `  <text x="18" y="34" fill="#1f3f73" font-size="16" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">${escapedTitle}</text>`,
+      `  <g transform="translate(0 ${headerHeight})">`,
+      inner,
+      '  </g>',
+      '</svg>'
+    ].join('\n');
+  }
+
+  private extractSvgDimension(svg: string, attr: 'width' | 'height', fallback: number): number {
+    const attrMatch = svg.match(new RegExp(`${attr}="([\\d.]+)(?:px)?"`));
+    if (attrMatch) {
+      return Math.max(1, Math.round(Number(attrMatch[1])));
+    }
+
+    const viewBoxMatch = svg.match(/viewBox="([\d.\s-]+)"/);
+    if (viewBoxMatch) {
+      const parts = viewBoxMatch[1].trim().split(/\s+/).map((part) => Number(part));
+      if (parts.length === 4 && Number.isFinite(parts[2]) && Number.isFinite(parts[3])) {
+        return Math.max(1, Math.round(attr === 'width' ? parts[2] : parts[3]));
+      }
+    }
+
+    return fallback;
+  }
+
+  private escapeXml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
   }
 }
 

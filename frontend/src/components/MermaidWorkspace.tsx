@@ -2,6 +2,7 @@ import React from 'react'
 import { Button, Card, Col, Input, Row, Select, Space, Typography } from 'antd'
 import { ThunderboltOutlined, CopyOutlined } from '@ant-design/icons'
 import DiagramRenderer from './DiagramRenderer'
+import ExportPanel from './ExportPanel'
 import { ViewMode } from '../types'
 import { sqlService } from '../services/api'
 import { notify } from '../utils/notify'
@@ -28,29 +29,48 @@ const MermaidWorkspace: React.FC = () => {
   const [diagramCode, setDiagramCode] = React.useState(defaultCode)
   const [loading, setLoading] = React.useState(false)
   const [activeSection, setActiveSection] = React.useState<'source' | 'result'>('source')
+  const [transformCount, setTransformCount] = React.useState(0)
+  const [skippedCount, setSkippedCount] = React.useState(0)
+  const [renderMetrics, setRenderMetrics] = React.useState({ renderCount: 0, skippedCount: 0 })
   const sourceSectionRef = React.useRef<HTMLDivElement | null>(null)
   const resultSectionRef = React.useRef<HTMLDivElement | null>(null)
+  const lastTransformSignatureRef = React.useRef('')
 
   const scrollToSection = (ref: React.RefObject<HTMLDivElement>) => {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const copyConverted = async () => {
+  const copyConverted = React.useCallback(async () => {
     try {
       await navigator.clipboard.writeText(diagramCode)
       notify.success('转换后代码已复制')
     } catch (error) {
       notify.error('复制失败，请手动复制')
     }
-  }
+  }, [diagramCode])
 
   const handleTransform = React.useCallback(async () => {
+    if (loading) {
+      setSkippedCount((prev) => prev + 1)
+      return
+    }
     if (!sourceCode.trim()) {
       notify.warning('请输入 Mermaid 或 SQL 代码')
       return
     }
+    const signature = JSON.stringify({
+      sourceCode: sourceCode.trim(),
+      viewMode,
+      theme,
+      chenPinnedEntities: [...chenPinnedEntities].sort()
+    })
+    if (signature === lastTransformSignatureRef.current) {
+      setSkippedCount((prev) => prev + 1)
+      return
+    }
 
     setLoading(true)
+    setTransformCount((prev) => prev + 1)
     try {
       const response = await sqlService.transformPreview(
         sourceCode,
@@ -60,6 +80,7 @@ const MermaidWorkspace: React.FC = () => {
       )
       if (response.success && response.data?.diagramCode) {
         setDiagramCode(response.data.diagramCode)
+        lastTransformSignatureRef.current = signature
         const warning = (response.data as { warning?: string }).warning
         if (warning) {
           notify.warning(`转换降级: ${warning}`)
@@ -74,7 +95,7 @@ const MermaidWorkspace: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [sourceCode, viewMode, theme, chenPinnedEntities])
+  }, [sourceCode, viewMode, theme, chenPinnedEntities, loading])
 
   React.useEffect(() => {
     const onHotkey = (event: KeyboardEvent) => {
@@ -90,7 +111,7 @@ const MermaidWorkspace: React.FC = () => {
     }
     window.addEventListener('keydown', onHotkey)
     return () => window.removeEventListener('keydown', onHotkey)
-  }, [sourceCode, viewMode, theme, chenPinnedEntities, diagramCode, handleTransform])
+  }, [handleTransform, copyConverted])
 
   React.useEffect(() => {
     const onGlobalTransform = () => {
@@ -128,6 +149,11 @@ const MermaidWorkspace: React.FC = () => {
           <Button size="small" type={activeSection === 'source' ? 'primary' : 'default'} onClick={() => scrollToSection(sourceSectionRef)}>源码输入</Button>
           <Button size="small" type={activeSection === 'result' ? 'primary' : 'default'} onClick={() => scrollToSection(resultSectionRef)}>图与结果</Button>
           <Text className="hotkey-hint">快捷键：Ctrl/Cmd + Enter 转换，Ctrl/Cmd + Shift + C 复制结果</Text>
+          {import.meta.env.DEV && (
+            <Text className="hotkey-hint">
+              dev metrics: render {renderMetrics.renderCount} / transform {transformCount} / skipped {skippedCount + renderMetrics.skippedCount}
+            </Text>
+          )}
         </Space>
       </div>
       <div ref={sourceSectionRef}>
@@ -191,12 +217,24 @@ const MermaidWorkspace: React.FC = () => {
 
       <Row gutter={[16, 16]} className="workspace-grid" ref={resultSectionRef}>
         <Col xs={24} xl={14}>
-          <DiagramRenderer code={diagramCode} theme={theme} />
+          <DiagramRenderer
+            code={diagramCode}
+            theme={theme}
+            onRenderMetricsChange={(metrics) => setRenderMetrics(metrics)}
+          />
         </Col>
         <Col xs={24} xl={10}>
           <Card title="转换后代码" className="soft-card" extra={<Button size="small" icon={<CopyOutlined />} onClick={() => void copyConverted()}>复制</Button>}>
             <TextArea rows={20} value={diagramCode} readOnly />
           </Card>
+          <div style={{ marginTop: 16 }}>
+            <ExportPanel
+              sql={diagramCode}
+              theme={theme}
+              viewMode={viewMode}
+              chenPinnedEntities={chenPinnedEntities}
+            />
+          </div>
         </Col>
       </Row>
     </Space>

@@ -75,41 +75,95 @@ export const projectService = {
   },
 }
 
+type ExportRequestOptions = {
+  schemaName?: string
+  imageScale?: 1 | 2 | 3
+  projectName?: string
+  version?: string
+  includeProjectMeta?: boolean
+  pdfPageStrategy?: 'original' | 'a4-landscape'
+  titleTemplateLocale?: 'zh' | 'en'
+  titleFieldOrder?: Array<'mode' | 'schema' | 'exported' | 'project' | 'version'>
+  showUTC?: boolean
+}
+
+async function postExportBlob(
+  path: string,
+  body: Record<string, unknown>
+): Promise<Blob> {
+  const response = await api.post(path, body, {
+    responseType: 'blob',
+    timeout: 120000,
+    validateStatus: () => true
+  })
+  if (response.status >= 200 && response.status < 300) {
+    return response.data as Blob
+  }
+  let detail = `导出失败（HTTP ${response.status}）`
+  try {
+    const text = await (response.data as Blob).text()
+    const parsed = JSON.parse(text) as { error?: string; message?: string }
+    if (typeof parsed.error === 'string' && parsed.error.trim()) {
+      detail = parsed.error.trim()
+    } else if (typeof parsed.message === 'string' && parsed.message.trim()) {
+      detail = parsed.message.trim()
+    }
+  } catch {
+    // keep generic detail
+  }
+  throw new Error(detail)
+}
+
 export const exportService = {
   exportSVG: async (
-    sql: string,
+    sourceCode: string,
     theme: string = 'default',
     viewMode: ViewMode = 'classic',
-    chenPinnedEntities: string[] = []
+    chenPinnedEntities: string[] = [],
+    options: ExportRequestOptions = {}
   ): Promise<Blob> => {
-    const response = await api.post('/export/svg', { sql, theme, viewMode, chenPinnedEntities }, {
-      responseType: 'blob'
+    return postExportBlob('/export/svg', {
+      sql: sourceCode,
+      code: sourceCode,
+      theme,
+      viewMode,
+      chenPinnedEntities,
+      ...options
     })
-    return response.data
   },
 
   exportPNG: async (
-    sql: string,
+    sourceCode: string,
     theme: string = 'default',
     viewMode: ViewMode = 'classic',
-    chenPinnedEntities: string[] = []
+    chenPinnedEntities: string[] = [],
+    options: ExportRequestOptions = {}
   ): Promise<Blob> => {
-    const response = await api.post('/export/png', { sql, theme, viewMode, chenPinnedEntities }, {
-      responseType: 'blob'
+    return postExportBlob('/export/png', {
+      sql: sourceCode,
+      code: sourceCode,
+      theme,
+      viewMode,
+      chenPinnedEntities,
+      ...options
     })
-    return response.data
   },
 
   exportPDF: async (
-    sql: string,
+    sourceCode: string,
     theme: string = 'default',
     viewMode: ViewMode = 'classic',
-    chenPinnedEntities: string[] = []
+    chenPinnedEntities: string[] = [],
+    options: ExportRequestOptions = {}
   ): Promise<Blob> => {
-    const response = await api.post('/export/pdf', { sql, theme, viewMode, chenPinnedEntities }, {
-      responseType: 'blob'
+    return postExportBlob('/export/pdf', {
+      sql: sourceCode,
+      code: sourceCode,
+      theme,
+      viewMode,
+      chenPinnedEntities,
+      ...options
     })
-    return response.data
   },
 }
 
