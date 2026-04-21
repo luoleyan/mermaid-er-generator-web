@@ -1,5 +1,13 @@
 @import 'antd/dist/reset.css';
 
+/* Long API errors must not grow into a full-screen layer that blocks clicks */
+.ant-message .ant-message-notice-content {
+  max-width: min(92vw, 520px);
+  max-height: min(38vh, 200px);
+  overflow: auto;
+  word-break: break-word;
+}
+
 :root {
   color-scheme: light;
   --app-bg: linear-gradient(180deg, #f3f7ff 0%, #f6f8fc 52%, #f7f7fb 100%);

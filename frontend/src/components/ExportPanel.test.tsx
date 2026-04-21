@@ -62,7 +62,7 @@ describe('ExportPanel Component', () => {
     fireEvent.click(screen.getByText('导出 SVG'))
     
     await waitFor(() => {
-      expect(screen.getByText('请先输入 SQL 语句')).toBeInTheDocument()
+      expect(screen.getByText('请先输入 Mermaid 或 SQL 代码')).toBeInTheDocument()
     })
   })
 
