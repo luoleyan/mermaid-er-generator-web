@@ -6,6 +6,16 @@ import { exportService } from '../services/api'
 
 const { Title } = Typography
 
+const TOAST_DURATION_OK = 3
+const TOAST_DURATION_ERR = 5
+const MAX_ERROR_TEXT = 320
+
+function truncateToastText(text: string, max = MAX_ERROR_TEXT): string {
+  const t = text.trim()
+  if (t.length <= max) return t
+  return `${t.slice(0, max)}…`
+}
+
 interface ExportPanelProps {
   /** SQL or Mermaid source to export (should match what the diagram preview is built from). */
   sql: string
@@ -20,7 +30,8 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
   viewMode = 'classic',
   chenPinnedEntities = []
 }) => {
-  const [messageApi, contextHolder] = message.useMessage()
+  /** Kept as `null` so any stale `{contextHolder}` from `message.useMessage()` does not throw. */
+  const contextHolder: React.ReactNode = null
   const [loading, setLoading] = useState(false)
   const [schemaName, setSchemaName] = useState('default')
   const [imageScale, setImageScale] = useState<1 | 2 | 3>(2)
@@ -81,7 +92,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
 
   const handleExport = async (format: 'png' | 'svg' | 'pdf') => {
     if (!sql.trim()) {
-      messageApi.error('请先输入 Mermaid 或 SQL 代码')
+      message.error('请先输入 Mermaid 或 SQL 代码', TOAST_DURATION_ERR)
       return
     }
 
@@ -143,19 +154,19 @@ const ExportPanel: React.FC<ExportPanelProps> = ({
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
 
-      messageApi.success(`成功导出 ${format.toUpperCase()} 文件`)
+      message.success(`成功导出 ${format.toUpperCase()} 文件`, TOAST_DURATION_OK)
     } catch (error) {
       console.error('Export error:', error)
       const errObj = error as { code?: string; message?: string }
       const maybeTimeout = errObj.code === 'ECONNABORTED'
         || /timeout/i.test(errObj.message || '')
       if (maybeTimeout) {
-        messageApi.error('导出超时，请降低清晰度档位或稍后重试')
+        message.error('导出超时，请降低清晰度档位或稍后重试', TOAST_DURATION_ERR)
       } else {
-        const msg = errObj.message && errObj.message.trim().length > 0
+        const raw = errObj.message && errObj.message.trim().length > 0
           ? errObj.message
           : '导出失败，请重试'
-        messageApi.error(msg)
+        message.error(truncateToastText(raw), TOAST_DURATION_ERR)
       }
     } finally {
       setLoading(false)

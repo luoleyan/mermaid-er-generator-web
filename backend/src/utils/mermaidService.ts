@@ -133,6 +133,8 @@ export class MermaidService {
     const svgElementProto = w.SVGElement.prototype as unknown as {
       getBBox?: () => DOMRect;
       getComputedTextLength?: () => number;
+      getTotalLength?: () => number;
+      getPointAtLength?: (distance: number) => DOMPoint;
     };
     svgElementProto.getBBox = function getBBox() {
       return rect(0, 0, 200, 48);
@@ -140,6 +142,21 @@ export class MermaidService {
     svgElementProto.getComputedTextLength = function getComputedTextLength(this: SVGElement) {
       const text = this.textContent ?? '';
       return Math.max(1, text.length * 7.2);
+    };
+    // ER diagram places edge labels via path length / midpoint; JSDOM `<path>` is plain SVGElement with no geometry APIs.
+    svgElementProto.getTotalLength = function getTotalLength(this: SVGElement) {
+      const d = this.getAttribute?.('d') ?? '';
+      const n = typeof d === 'string' ? d.length : 0;
+      return Math.max(48, Math.min(20000, n > 0 ? n * 6 : 240));
+    };
+    svgElementProto.getPointAtLength = function getPointAtLength(this: SVGElement, distance: number) {
+      const len = typeof distance === 'number' && Number.isFinite(distance) ? distance : 0;
+      const x = len * 0.55;
+      const y = len * 0.35;
+      if (typeof w.DOMPoint === 'function') {
+        return new w.DOMPoint(x, y);
+      }
+      return { x, y } as DOMPoint;
     };
     if (w.SVGSVGElement) {
       w.SVGSVGElement.prototype.getBBox = function getBBox() {

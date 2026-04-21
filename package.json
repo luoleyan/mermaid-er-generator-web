@@ -19,7 +19,14 @@
     "lint:frontend": "cd frontend && npm run lint",
     "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install && cd ../tests && npm install"
   },
-  "keywords": ["mermaid", "er-diagram", "sql", "typescript", "react", "express"],
+  "keywords": [
+    "mermaid",
+    "er-diagram",
+    "sql",
+    "typescript",
+    "react",
+    "express"
+  ],
   "author": "luoleyan",
   "license": "MIT",
   "devDependencies": {
