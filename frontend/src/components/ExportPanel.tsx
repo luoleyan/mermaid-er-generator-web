@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Card, Space, Button, Typography, message, Select, Input, Switch, Tag } from 'antd'
 import { FileImageOutlined, FilePdfOutlined } from '@ant-design/icons'
-import { ViewMode } from '../types'
+import { ViewMode } from '@shared/types'
 import { exportService } from '../services/api'
 
 const { Title } = Typography

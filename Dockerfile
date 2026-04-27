@@ -3,7 +3,7 @@ FROM node:18-alpine AS backend-builder
 
 WORKDIR /app/backend
 COPY backend/package*.json ./
-RUN npm ci --only=production
+RUN npm ci --only=production && npm cache clean --force
 
 COPY backend/ ./
 RUN npm run build
@@ -12,7 +12,7 @@ FROM node:18-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
-RUN npm ci
+RUN npm ci && npm cache clean --force
 
 COPY frontend/ ./
 RUN npm run build
@@ -34,9 +34,7 @@ COPY shared/ ./shared/
 COPY package.json ./
 COPY README.md ./
 
-# Install production dependencies for backend
-WORKDIR /app/backend
-RUN npm ci --only=production && npm cache clean --force
+# Working directory already set to backend
 
 # Expose port
 EXPOSE 3001

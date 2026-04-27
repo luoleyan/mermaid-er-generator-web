@@ -2,7 +2,7 @@ import React from 'react'
 import { render, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 import EntityList from '../components/EntityList'
-import { SQLParseResult } from '../types'
+import { SQLParseResult } from '@shared/types'
 
 // Mock mermaid
 vi.mock('mermaid', () => ({

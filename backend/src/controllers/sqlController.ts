@@ -36,7 +36,7 @@ export const sqlController = {
         const diagram = await mermaidService.generateDiagram(
           result.entities, 
           result.relationships,
-          { theme, securityLevel: 'loose', fontFamily: 'sans-serif', viewMode, chenPinnedEntities }
+          { theme, securityLevel: 'strict', fontFamily: 'sans-serif', viewMode, chenPinnedEntities }
         );
         
         res.json({
@@ -46,6 +46,60 @@ export const sqlController = {
             entities: result.entities,
             relationships: result.relationships,
             errors: result.errors
+          }
+        });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+  ],
+
+  generateFromEntities: [
+    async (req: Request, res: Response) => {
+      try {
+        const { entities, relationships, theme = 'default', viewMode = 'classic', chenPinnedEntities = [] } = req.body;
+
+        const mermaidService = new MermaidService();
+        const diagram = await mermaidService.generateDiagram(
+          entities,
+          relationships,
+          { theme, securityLevel: 'strict', fontFamily: 'sans-serif', viewMode, chenPinnedEntities }
+        );
+
+        res.json({
+          success: true,
+          data: {
+            diagram,
+          }
+        });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+  ],
+
+  generateCodeFromEntities: [
+    async (req: Request, res: Response) => {
+      try {
+        const { entities, relationships, theme = 'default', viewMode = 'classic', chenPinnedEntities = [] } = req.body;
+
+        const mermaidService = new MermaidService();
+        const diagramCode = mermaidService.generateDiagramCode(
+          entities,
+          relationships,
+          { theme, securityLevel: 'strict', fontFamily: 'sans-serif', viewMode, chenPinnedEntities }
+        );
+
+        res.json({
+          success: true,
+          data: {
+            diagramCode,
           }
         });
       } catch (error) {
@@ -102,7 +156,7 @@ export const sqlController = {
 
         const diagramCode = mermaidService.generateDiagramCode(entities, relationships, {
           theme,
-          securityLevel: 'loose',
+          securityLevel: 'strict',
           fontFamily: 'sans-serif',
           viewMode,
           chenPinnedEntities

@@ -1,5 +1,7 @@
 import axios from 'axios'
-import { APIResponse, SQLParseResult, Project, ViewMode } from '../types'
+import { APIResponse, SQLParseResult, Entity, Relationship, Project } from '@shared/types'
+import type { ViewMode } from '@shared/types'
+import { notify } from '../utils/notify'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
 
@@ -12,6 +14,22 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     console.error('API Error:', error)
+
+    if (!error.response) {
+      // Network error - no response received
+      notify.error('网络连接失败，请检查网络连接后重试')
+    } else if (error.code === 'ECONNABORTED' || error.response.status === 408) {
+      // Timeout
+      notify.error('请求超时，请重试')
+    } else if (error.response.status === 404) {
+      notify.error('请求的资源不存在')
+    } else if (error.response.status >= 500) {
+      notify.error('服务器错误，请稍后重试')
+    } else if (error.response.data?.error) {
+      // Server returned an explicit error message
+      notify.error(`请求失败: ${error.response.data.error}`)
+    }
+
     return Promise.reject(error)
   }
 )
@@ -29,6 +47,40 @@ export const sqlService = {
     chenPinnedEntities: string[] = []
   ): Promise<APIResponse<any>> => {
     const response = await api.post('/sql/generate', { sql, theme, viewMode, chenPinnedEntities })
+    return response.data
+  },
+
+  generateFromParseResult: async (
+    entities: Entity[],
+    relationships: Relationship[],
+    theme: string = 'default',
+    viewMode: ViewMode = 'classic',
+    chenPinnedEntities: string[] = []
+  ): Promise<APIResponse<{ diagram: string }>> => {
+    const response = await api.post('/sql/generate-from-entities', {
+      entities,
+      relationships,
+      theme,
+      viewMode,
+      chenPinnedEntities
+    })
+    return response.data
+  },
+
+  generateCodeFromParseResult: async (
+    entities: Entity[],
+    relationships: Relationship[],
+    theme: string = 'default',
+    viewMode: ViewMode = 'classic',
+    chenPinnedEntities: string[] = []
+  ): Promise<APIResponse<{ diagramCode: string }>> => {
+    const response = await api.post('/sql/generate-code-from-entities', {
+      entities,
+      relationships,
+      theme,
+      viewMode,
+      chenPinnedEntities
+    })
     return response.data
   },
 

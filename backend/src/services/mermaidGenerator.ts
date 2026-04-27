@@ -1,13 +1,13 @@
-import { Entity, Relationship } from '../../../../shared/types';
+import { Entity, Relationship } from '@shared/types';
 
 export class MermaidGeneratorService {
   generateERDiagram(entities: Record<string, Entity>, relationships: Relationship[], title?: string): string {
     const lines: string[] = ['erDiagram'];
-    
+
     if (title) {
       lines.push(`    %% ${title}`);
     }
-    
+
     lines.push('');
 
     for (const entityName in entities) {
@@ -25,17 +25,19 @@ export class MermaidGeneratorService {
 
   private generateEntityDefinition(entity: Entity): string {
     const lines: string[] = [`    ${entity.name} {`];
-    
-    for (const attr of entity.attributes) {
+
+    // This service handles parsed mermaid ER which uses attributes format
+    const attrs = entity.attributes || [];
+    for (const attr of attrs) {
       let line = `        ${attr.data_type} ${attr.name}`;
-      
+
       if (attr.is_primary_key) line += ' PK';
       if (attr.is_foreign_key) line += ' FK';
       if (!attr.is_nullable && !attr.is_primary_key) line += ' NOT NULL';
-      
+
       lines.push(line);
     }
-    
+
     lines.push('    }');
     return lines.join('\n');
   }
@@ -47,8 +49,9 @@ export class MermaidGeneratorService {
       'many-to-many': '}o--o{',
     };
 
-    const symbol = symbols[rel.relationship_type] || '||--o{';
-    
+    const relationshipType = rel.relationship_type || rel.type || 'one-to-many';
+    const symbol = symbols[relationshipType] || '||--o{';
+
     if (rel.name) {
       return `${rel.from_entity} ${symbol} ${rel.to_entity} : "${rel.name}"`;
     } else {
@@ -58,7 +61,7 @@ export class MermaidGeneratorService {
 
   generateMarkdown(entities: Record<string, Entity>, relationships: Relationship[], title?: string): string {
     const lines: string[] = [];
-    
+
     lines.push(`# ${title || 'ER Diagram'}`);
     lines.push('');
     lines.push('## Diagram');
@@ -69,7 +72,7 @@ export class MermaidGeneratorService {
     lines.push('');
     lines.push('## Entities');
     lines.push('');
-    
+
     for (const entityName in entities) {
       const entity = entities[entityName];
       lines.push(`### ${entity.name}`);
@@ -78,14 +81,16 @@ export class MermaidGeneratorService {
       }
       lines.push('');
       lines.push('| Field | Type | Constraints |');
-      lines.push('|-------|------|-------------|');
-      
-      for (const attr of entity.attributes) {
+      lines.push('|-------|------|-------------');
+
+      // This service handles parsed mermaid ER which uses attributes format
+      const attrs = entity.attributes || [];
+      for (const attr of attrs) {
         const constraints: string[] = [];
         if (attr.is_primary_key) constraints.push('PK');
         if (attr.is_foreign_key) constraints.push('FK');
         if (!attr.is_nullable) constraints.push('NOT NULL');
-        
+
         lines.push(`| ${attr.name} | ${attr.data_type} | ${constraints.join(', ') || '-'} |`);
       }
       lines.push('');
@@ -95,10 +100,11 @@ export class MermaidGeneratorService {
       lines.push('## Relationships');
       lines.push('');
       lines.push('| From | To | Type |');
-      lines.push('|------|-----|------|');
-      
+      lines.push('|------|-----|------');
+
       for (const rel of relationships) {
-        lines.push(`| ${rel.from_entity} | ${rel.to_entity} | ${rel.relationship_type} |`);
+        const type = rel.relationship_type || rel.type || 'one-to-many';
+        lines.push(`| ${rel.from_entity} | ${rel.to_entity} | ${type} |`);
       }
     }
 

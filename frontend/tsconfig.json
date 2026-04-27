@@ -30,9 +30,11 @@
       "@/components/*": ["./src/components/*"],
       "@/utils/*": ["./src/utils/*"],
       "@/types/*": ["./src/types/*"],
-      "@/services/*": ["./src/services/*"]
+      "@/services/*": ["./src/services/*"],
+      "@shared/*": ["../shared/*"]
     }
   },
   "include": ["src"],
+  "exclude": ["src/**/*.test.tsx", "src/**/*.test.ts", "node_modules", "dist"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
