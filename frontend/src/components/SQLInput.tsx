@@ -1,16 +1,18 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react'
-import { Card, Row, Col, Space, Typography, Button, Select } from 'antd'
-import { Editor } from '@monaco-editor/react'
+import React, { useState, useCallback, useEffect, useRef, Suspense } from 'react'
+import { Card, Row, Col, Space, Typography, Button, Select, Skeleton } from 'antd'
 import { SaveOutlined, FolderOpenOutlined, ReloadOutlined } from '@ant-design/icons'
 import { sqlService } from '../services/api'
-import { SQLParseResult, ViewMode } from '../types'
+import { SQLParseResult, ViewMode } from '@shared/types'
 import EntityList from './EntityList'
 import DiagramRenderer from './DiagramRenderer'
 import ExportPanel from './ExportPanel'
 import { notify } from '../utils/notify'
 
-const { Title, Text } = Typography
+const { Text } = Typography
 const { Option } = Select
+
+// Dynamic import for Monaco Editor to reduce initial bundle size
+const Editor = React.lazy(() => import('@monaco-editor/react'))
 
 const SQLInput: React.FC = () => {
   const [sql, setSql] = useState<string>('')
@@ -25,6 +27,22 @@ const SQLInput: React.FC = () => {
   const modelSectionRef = useRef<HTMLDivElement | null>(null)
   const previewSectionRef = useRef<HTMLDivElement | null>(null)
 
+  // Detect dark mode from document class for Monaco theme
+  const [isDarkMode, setIsDarkMode] = useState(() => 
+    document.querySelector('.app-root.theme-dark') !== null
+  )
+  
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsDarkMode(document.querySelector('.app-root.theme-dark') !== null)
+    })
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    })
+    return () => observer.disconnect()
+  }, [])
+
   const scrollToSection = (ref: React.RefObject<HTMLDivElement>) => {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
@@ -32,6 +50,17 @@ const SQLInput: React.FC = () => {
   const handleSqlChange = useCallback((value: string | undefined) => {
     setSql(value || '')
   }, [])
+
+  // Debounced auto-generate when SQL changes
+  useEffect(() => {
+    if (!sql.trim() || !parseResult) {
+      return
+    }
+    const timer = setTimeout(() => {
+      void handleGenerateDiagram(true)
+    }, 300) // 300ms debounce
+    return () => clearTimeout(timer)
+  }, [sql])
 
   const handleParse = async () => {
     if (!sql.trim()) {
@@ -66,16 +95,53 @@ const SQLInput: React.FC = () => {
 
     setLoading(true)
     try {
-      const response = await sqlService.generateDiagram(sql, theme, viewMode, chenPinnedEntities)
-      if (response.success && response.data) {
-        setMermaidCode(response.data.diagram)
-        setParseResult(response.data)
-        if (!silent) {
-          notify.success('ER 图生成成功')
+      // If we already have parseResult, reuse it - generate mermaid code on backend, render on frontend
+      if (parseResult) {
+        const response = await sqlService.generateCodeFromParseResult(
+          parseResult.entities,
+          parseResult.relationships,
+          theme,
+          viewMode,
+          chenPinnedEntities
+        )
+        if (response.success && response.data) {
+          setMermaidCode(response.data.diagramCode)
+          if (!silent) {
+            notify.success('ER 图生成成功')
+          }
+        } else {
+          if (!silent) {
+            notify.error(response.error || '生成失败')
+          }
         }
       } else {
-        if (!silent) {
-          notify.error(response.error || '生成失败')
+        // Full request including parsing
+        const response = await sqlService.generateDiagram(sql, theme, viewMode, chenPinnedEntities)
+        if (response.success && response.data) {
+          // generateDiagram still returns SVG from backend for full request compatibility
+          // For frontend rendering we need to get code - do a second request for code
+          const codeResponse = await sqlService.generateCodeFromParseResult(
+            response.data.entities,
+            response.data.relationships,
+            theme,
+            viewMode,
+            chenPinnedEntities
+          )
+          if (codeResponse.success && codeResponse.data) {
+            setMermaidCode(codeResponse.data.diagramCode)
+            setParseResult({
+              entities: response.data.entities,
+              relationships: response.data.relationships,
+              errors: response.data.errors
+            })
+          }
+          if (!silent) {
+            notify.success('ER 图生成成功')
+          }
+        } else {
+          if (!silent) {
+            notify.error(response.error || '生成失败')
+          }
         }
       }
     } catch (error) {
@@ -86,7 +152,7 @@ const SQLInput: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [sql, theme, viewMode, chenPinnedEntities])
+  }, [sql, theme, viewMode, chenPinnedEntities, parseResult])
 
   const handleThemeChange = (value: string) => {
     setTheme(value)
@@ -199,7 +265,7 @@ const SQLInput: React.FC = () => {
                   <Button type="default" icon={<SaveOutlined />} onClick={handleParse} loading={loading}>
                     解析 SQL
                   </Button>
-                  <Button type="primary" icon={<FolderOpenOutlined />} onClick={handleGenerateDiagram} loading={loading}>
+                  <Button type="primary" icon={<FolderOpenOutlined />} onClick={() => void handleGenerateDiagram()} loading={loading}>
                     生成 ER 图
                   </Button>
                   <Button icon={<ReloadOutlined />} onClick={() => void handleGenerateDiagram(true)} disabled={!sql.trim() || loading}>
@@ -208,23 +274,25 @@ const SQLInput: React.FC = () => {
                 </div>
               </div>
               
-              <div className="sql-editor">
-                <Editor
-                  height="400px"
-                  defaultLanguage="sql"
-                  value={sql}
-                  onChange={handleSqlChange}
-                  theme="vs-light"
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 14,
-                    lineNumbers: 'on',
-                    roundedSelection: false,
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                  }}
-                />
-              </div>
+               <div className="sql-editor">
+                 <Suspense fallback={<Skeleton active paragraph={{ rows: 10 }} />}>
+                   <Editor
+                     height="400px"
+                     defaultLanguage="sql"
+                     value={sql}
+                     onChange={handleSqlChange}
+                     theme={isDarkMode ? 'vs-dark' : 'vs-light'}
+                     options={{
+                       minimap: { enabled: false },
+                       fontSize: 14,
+                       lineNumbers: 'on',
+                       roundedSelection: false,
+                       scrollBeyondLastLine: false,
+                       automaticLayout: true,
+                     }}
+                   />
+                 </Suspense>
+               </div>
             </Space>
           </Card>
           </div>

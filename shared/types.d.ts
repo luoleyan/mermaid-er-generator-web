@@ -1,28 +1,20 @@
-export interface Attribute {
-    name: string;
-    data_type: string;
-    is_primary_key?: boolean;
-    is_foreign_key?: boolean;
-    is_nullable?: boolean;
-    default_value?: string;
-    references?: string;
-    comment?: string;
-}
 export interface Column {
     id?: string;
     name: string;
     type: string;
     nullable?: boolean;
     primaryKey?: boolean;
+    unique?: boolean;
     foreignKey?: {
         referencedTable: string;
         referencedColumn: string;
     };
+    defaultValue?: string;
+    comment?: string;
 }
 export interface Entity {
     id?: string;
     name: string;
-    attributes?: Attribute[];
     columns: Column[];
     comment?: string;
     relationships?: Relationship[];
@@ -36,19 +28,15 @@ export interface Relationship {
     id?: string;
     from: string;
     to: string;
+    type: string;
+    name?: string;
+    fromColumn?: string;
+    toColumn?: string;
     from_entity?: string;
     from_attribute?: string;
     to_entity?: string;
     to_attribute?: string;
-    type: string;
     relationship_type?: RelationshipType;
-    name?: string;
-    fromColumn?: string;
-    toColumn?: string;
-}
-export interface ParseResult {
-    entities: Record<string, Entity> | Entity[];
-    relationships: Relationship[];
 }
 export interface SQLParseResult {
     entities: Entity[];
@@ -58,8 +46,47 @@ export interface SQLParseResult {
 export interface Project {
     id: string;
     name: string;
+    description?: string;
     sql: string;
-    created_at: string;
-    updated_at: string;
+    entities?: Entity[];
+    relationships?: Relationship[];
+    createdAt: Date;
+    updatedAt: Date;
+    created_at?: string;
+    updated_at?: string;
+}
+export type ExportFormat = 'png' | 'svg' | 'pdf';
+export interface ExportConfig {
+    format: ExportFormat;
+    theme: string;
+    fontFamily: string;
+    viewMode: 'classic' | 'physical' | 'chen';
+    exportOptions?: {
+        schemaName?: string;
+        includeTitleBar?: boolean;
+        imageScale?: 1 | 2 | 3;
+        exportedAt?: Date;
+        projectName?: string;
+        version?: string;
+        includeProjectMeta?: boolean;
+        pdfPageStrategy?: 'original' | 'a4-landscape';
+        titleTemplateLocale?: 'zh' | 'en';
+        titleFieldOrder?: Array<'mode' | 'schema' | 'exported' | 'project' | 'version'>;
+        showUTC?: boolean;
+    };
+}
+export interface MermaidConfig {
+    theme: string;
+    securityLevel: 'loose' | 'strict' | 'antiscript';
+    fontFamily: string;
+    viewMode?: 'classic' | 'physical' | 'chen';
+    chenPinnedEntities?: string[];
+    exportOptions?: ExportConfig['exportOptions'];
+}
+export type ViewMode = 'classic' | 'physical' | 'chen';
+export interface APIResponse<T> {
+    success: boolean;
+    data?: T;
+    error?: string;
 }
 //# sourceMappingURL=types.d.ts.map

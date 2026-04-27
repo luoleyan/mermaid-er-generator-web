@@ -1,5 +1,5 @@
 import { SQLParser } from './sqlParser';
-import type { Column } from '../types';
+import type { Column } from '@shared/types';
 
 describe('SQLParser', () => {
   describe('parseSQL', () => {

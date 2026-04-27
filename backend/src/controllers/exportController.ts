@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { MermaidService } from '../utils/mermaidService';
 import { MermaidERParser } from '../utils/mermaidERParser';
+import { SQLParser } from '../utils/sqlParser';
 import { createError } from '../middleware/errorHandler';
 
 export const exportController = {
@@ -105,7 +106,7 @@ export const exportController = {
       const mermaidService = new MermaidService();
       const config = {
         theme,
-        securityLevel: 'loose' as const,
+        securityLevel: 'strict' as const,
         fontFamily: 'sans-serif',
         viewMode,
         chenPinnedEntities,
@@ -120,12 +121,11 @@ export const exportController = {
           showUTC
         })
       };
-      let svg: string;
-      if (resolved.kind === 'sql') {
-        const { SQLParser } = await import('../utils/sqlParser');
-        const result = SQLParser.parseSQL(resolved.source);
-        svg = await mermaidService.generateDiagram(result.entities, result.relationships, config);
-      } else if (resolved.kind === 'erDiagram') {
+       let svg: string;
+       if (resolved.kind === 'sql') {
+         const result = SQLParser.parseSQL(resolved.source);
+         svg = await mermaidService.generateDiagram(result.entities, result.relationships, config);
+       } else if (resolved.kind === 'erDiagram') {
         const parsed = MermaidERParser.parse(resolved.source);
         svg = await mermaidService.generateDiagram(parsed.entities, parsed.relationships, config);
       } else {
@@ -172,7 +172,7 @@ export const exportController = {
       const mermaidService = new MermaidService();
       const config = {
         theme,
-        securityLevel: 'loose' as const,
+        securityLevel: 'strict' as const,
         fontFamily: 'sans-serif',
         viewMode,
         chenPinnedEntities,
@@ -187,12 +187,11 @@ export const exportController = {
           showUTC
         })
       };
-      let png: Buffer;
-      if (resolved.kind === 'sql') {
-        const { SQLParser } = await import('../utils/sqlParser');
-        const result = SQLParser.parseSQL(resolved.source);
-        png = await mermaidService.renderToPNG(result.entities, result.relationships, config);
-      } else if (resolved.kind === 'erDiagram') {
+       let png: Buffer;
+       if (resolved.kind === 'sql') {
+         const result = SQLParser.parseSQL(resolved.source);
+         png = await mermaidService.renderToPNG(result.entities, result.relationships, config);
+       } else if (resolved.kind === 'erDiagram') {
         const parsed = MermaidERParser.parse(resolved.source);
         png = await mermaidService.renderToPNG(parsed.entities, parsed.relationships, config);
       } else {
@@ -239,7 +238,7 @@ export const exportController = {
       const mermaidService = new MermaidService();
       const config = {
         theme,
-        securityLevel: 'loose' as const,
+        securityLevel: 'strict' as const,
         fontFamily: 'sans-serif',
         viewMode,
         chenPinnedEntities,
@@ -255,12 +254,11 @@ export const exportController = {
           showUTC
         })
       };
-      let pdf: Buffer;
-      if (resolved.kind === 'sql') {
-        const { SQLParser } = await import('../utils/sqlParser');
-        const result = SQLParser.parseSQL(resolved.source);
-        pdf = await mermaidService.renderToPDF(result.entities, result.relationships, config);
-      } else if (resolved.kind === 'erDiagram') {
+       let pdf: Buffer;
+       if (resolved.kind === 'sql') {
+         const result = SQLParser.parseSQL(resolved.source);
+         pdf = await mermaidService.renderToPDF(result.entities, result.relationships, config);
+       } else if (resolved.kind === 'erDiagram') {
         const parsed = MermaidERParser.parse(resolved.source);
         pdf = await mermaidService.renderToPDF(parsed.entities, parsed.relationships, config);
       } else {

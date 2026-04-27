@@ -2,7 +2,7 @@ import React from 'react'
 import { Button, Card, Col, Input, Row, Select, Space, Typography } from 'antd'
 import { CopyOutlined } from '@ant-design/icons'
 import DiagramRenderer from './DiagramRenderer'
-import { ViewMode } from '../types'
+import { ViewMode } from '@shared/types'
 import { sqlService } from '../services/api'
 import { notify } from '../utils/notify'
 

@@ -39,7 +39,7 @@ import MermaidPreviewPage from './components/MermaidPreviewPage'
 import MermaidWorkspace from './components/MermaidWorkspace'
 import DiagramRenderer from './components/DiagramRenderer'
 import { projectService } from './services/api'
-import { Project } from './types'
+import { Project } from '@shared/types'
 
 const { Header, Content } = Layout
 const { Title, Paragraph } = Typography

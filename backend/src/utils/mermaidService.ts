@@ -1,28 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
-import { Entity, Relationship } from '../types';
+import { Entity, Relationship, MermaidConfig } from '@shared/types';
 import sharp from 'sharp';
 import PDFDocument from 'pdfkit';
-
-export interface MermaidConfig {
-  theme: string;
-  securityLevel: 'loose' | 'strict' | 'antiscript';
-  fontFamily: string;
-  viewMode?: 'classic' | 'physical' | 'chen';
-  chenPinnedEntities?: string[];
-  exportOptions?: {
-    schemaName?: string;
-    includeTitleBar?: boolean;
-    imageScale?: 1 | 2 | 3;
-    exportedAt?: Date;
-    projectName?: string;
-    version?: string;
-    includeProjectMeta?: boolean;
-    pdfPageStrategy?: 'original' | 'a4-landscape';
-    titleTemplateLocale?: 'zh' | 'en';
-    titleFieldOrder?: Array<'mode' | 'schema' | 'exported' | 'project' | 'version'>;
-    showUTC?: boolean;
-  };
-}
 
 type MermaidInstance = (typeof import('mermaid'))['default'];
 
@@ -169,12 +148,12 @@ export class MermaidService {
     if (!this.mermaid) {
       const module = await import('mermaid');
       this.mermaid = module.default;
-      this.mermaid.initialize({
-        startOnLoad: false,
-        securityLevel: 'loose',
-        theme: 'default',
-        fontFamily: 'sans-serif'
-      });
+       this.mermaid.initialize({
+         startOnLoad: false,
+         securityLevel: 'strict',
+         theme: 'default',
+         fontFamily: 'sans-serif'
+       });
     }
 
     return this.mermaid;
@@ -258,7 +237,7 @@ export class MermaidService {
   generateDiagramCode(
     entities: Entity[],
     relationships: Relationship[],
-    config: MermaidConfig = { theme: 'default', securityLevel: 'loose', fontFamily: 'sans-serif', viewMode: 'classic' }
+    config: MermaidConfig = { theme: 'default', securityLevel: 'strict', fontFamily: 'sans-serif', viewMode: 'classic' }
   ): string {
     return this.generateMermaidCode(
       entities,
@@ -537,6 +516,9 @@ export class MermaidService {
   }
 
   private detectAssociativeTables(entities: Entity[]): Entity[] {
+    // Maximum number of extra non-key non-foreign columns allowed for an associative table
+    const MAX_EXTRA_COLUMNS = 1;
+
     return entities.filter((entity) => {
       const columns = entity.columns || [];
       const foreignKeyColumns = columns.filter((column) => column.foreignKey);
@@ -546,15 +528,26 @@ export class MermaidService {
       }
 
       const primaryKeys = new Set(columns.filter((column) => column.primaryKey).map((column) => column.name));
+      // Association table requires at least one primary key
       if (primaryKeys.size === 0) {
         return false;
       }
 
       const foreignKeyNames = new Set(foreignKeyColumns.map((column) => column.name));
-      const allPrimaryKeysAreForeignKeys = [...primaryKeys].every((name) => foreignKeyNames.has(name));
-      const noNonKeyAttributes = columns.every((column) => primaryKeys.has(column.name) || !!column.foreignKey);
+      // All primary key columns must be foreign keys (surrogate key that's primary but not foreign is allowed separately)
+      // Check that every PK that is also FK covers all required FKs
+      const primaryKeyNames = [...primaryKeys];
+      const nonForeignPrimaryKeys = primaryKeyNames.filter((name) => !foreignKeyNames.has(name));
+      // Allow at most 1 non-foreign primary key (this is the surrogate auto-increment id)
+      if (nonForeignPrimaryKeys.length > 1) {
+        return false;
+      }
 
-      return allPrimaryKeysAreForeignKeys && noNonKeyAttributes;
+      // Reject if there are too many extra columns that are neither primary nor foreign keys
+      const extraColumns = columns.filter(column => !primaryKeys.has(column.name) && !column.foreignKey);
+      const hasOnlyKeyAttributes = extraColumns.length <= MAX_EXTRA_COLUMNS;
+
+      return hasOnlyKeyAttributes;
     });
   }
 
@@ -694,7 +687,7 @@ export class MermaidService {
 
   async renderCodeToSVG(
     mermaidCode: string,
-    config: MermaidConfig = { theme: 'default', securityLevel: 'loose', fontFamily: 'sans-serif', viewMode: 'classic' }
+    config: MermaidConfig = { theme: 'default', securityLevel: 'strict', fontFamily: 'sans-serif', viewMode: 'classic' }
   ): Promise<string> {
     return this.renderMermaidCodeToSVG(mermaidCode, config, config.exportOptions?.schemaName || 'default');
   }
@@ -702,7 +695,7 @@ export class MermaidService {
   async generateDiagram(
     entities: Entity[], 
     relationships: Relationship[], 
-    config: MermaidConfig = { theme: 'default', securityLevel: 'loose', fontFamily: 'sans-serif', viewMode: 'classic' }
+    config: MermaidConfig = { theme: 'default', securityLevel: 'strict', fontFamily: 'sans-serif', viewMode: 'classic' }
   ): Promise<string> {
     try {
       return await this.generateSVG(entities, relationships, config);
@@ -714,7 +707,7 @@ export class MermaidService {
   async renderToPNG(
     entities: Entity[], 
     relationships: Relationship[], 
-    config: MermaidConfig = { theme: 'default', securityLevel: 'loose', fontFamily: 'sans-serif', viewMode: 'classic' }
+    config: MermaidConfig = { theme: 'default', securityLevel: 'strict', fontFamily: 'sans-serif', viewMode: 'classic' }
   ): Promise<Buffer> {
     const svg = await this.generateSVG(entities, relationships, config);
     const scale = this.normalizeExportScale(config.exportOptions?.imageScale);
@@ -723,7 +716,7 @@ export class MermaidService {
 
   async renderCodeToPNG(
     mermaidCode: string,
-    config: MermaidConfig = { theme: 'default', securityLevel: 'loose', fontFamily: 'sans-serif', viewMode: 'classic' }
+    config: MermaidConfig = { theme: 'default', securityLevel: 'strict', fontFamily: 'sans-serif', viewMode: 'classic' }
   ): Promise<Buffer> {
     const svg = await this.renderCodeToSVG(mermaidCode, config);
     const scale = this.normalizeExportScale(config.exportOptions?.imageScale);
@@ -733,7 +726,7 @@ export class MermaidService {
   async renderToPDF(
     entities: Entity[],
     relationships: Relationship[],
-    config: MermaidConfig = { theme: 'default', securityLevel: 'loose', fontFamily: 'sans-serif', viewMode: 'classic' }
+    config: MermaidConfig = { theme: 'default', securityLevel: 'strict', fontFamily: 'sans-serif', viewMode: 'classic' }
   ): Promise<Buffer> {
     const svg = await this.generateSVG(entities, relationships, config);
     return this.renderSVGToPDF(svg, config);
@@ -741,7 +734,7 @@ export class MermaidService {
 
   async renderCodeToPDF(
     mermaidCode: string,
-    config: MermaidConfig = { theme: 'default', securityLevel: 'loose', fontFamily: 'sans-serif', viewMode: 'classic' }
+    config: MermaidConfig = { theme: 'default', securityLevel: 'strict', fontFamily: 'sans-serif', viewMode: 'classic' }
   ): Promise<Buffer> {
     const svg = await this.renderCodeToSVG(mermaidCode, config);
     return this.renderSVGToPDF(svg, config);
@@ -749,9 +742,8 @@ export class MermaidService {
 
   private async renderSVGToPDF(svg: string, config: MermaidConfig): Promise<Buffer> {
     const scale = this.normalizeExportScale(config.exportOptions?.imageScale);
-    const basePng = await sharp(Buffer.from(svg), { density: 96 }).png().toBuffer();
     const hiResPng = await sharp(Buffer.from(svg), { density: 96 * scale }).png().toBuffer();
-    const metadata = await sharp(basePng).metadata();
+    const metadata = await sharp(hiResPng).metadata();
     const width = metadata.width ?? 1200;
     const height = metadata.height ?? 800;
     const pdfPageStrategy = config.exportOptions?.pdfPageStrategy || 'original';

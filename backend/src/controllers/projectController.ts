@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { Project } from '../types';
+import { Project } from '@shared/types';
 import { createError } from '../middleware/errorHandler';
 
 // In-memory storage for demo purposes

@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import type { Column, Entity, Relationship } from '../types';
+import type { Column, Entity, Relationship } from '@shared/types';
 
 export class MermaidERParser {
   static parse(code: string): { entities: Entity[]; relationships: Relationship[] } {

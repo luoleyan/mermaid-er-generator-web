@@ -1,17 +1,15 @@
-import React, { useState, useEffect } from 'react'
-import { Card, Row, Col, Spin, Alert, Space, Typography } from 'antd'
+import React from 'react'
+import { Card, Row, Col, Alert, Space, Typography } from 'antd'
 import { DatabaseOutlined, LinkOutlined } from '@ant-design/icons'
-import { Entity, Relationship, SQLParseResult } from '../types'
+import { SQLParseResult } from '@shared/types'
 
-const { Title, Text } = Typography
+const { Text } = Typography
 
 interface EntityListProps {
   data: SQLParseResult
 }
 
 const EntityList: React.FC<EntityListProps> = ({ data }) => {
-  const [loading, setLoading] = useState(false)
-
   if (data.errors.length > 0) {
     return (
       <Alert

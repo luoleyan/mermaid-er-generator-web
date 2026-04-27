@@ -106,7 +106,7 @@ const DiagramRenderer: React.FC<DiagramRendererProps> = ({ code, theme = 'defaul
         if (lastThemeRef.current !== resolvedTheme) {
           mermaid.initialize({
             startOnLoad: false,
-            securityLevel: 'loose',
+            securityLevel: 'strict',
             theme: resolvedTheme,
             fontFamily: 'sans-serif'
           })
@@ -145,36 +145,36 @@ const DiagramRenderer: React.FC<DiagramRendererProps> = ({ code, theme = 'defaul
     }
   }, [safeCode, theme])
 
-  if (loading) {
-    return (
-      <Card title="ER 图">
-        <div className="loading-spinner">
-          <Spin size="large" />
-        </div>
-      </Card>
-    )
-  }
+   if (loading) {
+     return (
+       <Card title="ER 图预览">
+         <div className="loading-spinner">
+           <Spin size="large" />
+         </div>
+       </Card>
+     )
+   }
 
-  if (error) {
-    return (
-      <Card title="ER 图">
-        <Alert message="图表渲染错误" description={error} type="error" showIcon />
-      </Card>
-    )
-  }
+   if (error) {
+     return (
+       <Card title="ER 图预览">
+         <Alert message="图表渲染错误" description={error} type="error" showIcon />
+       </Card>
+     )
+   }
 
-  if (!code) {
-    return (
-      <Card title="ER 图">
-        <div className="diagram-container">
-          <Text type="secondary">请输入 Mermaid 代码以生成 ER 图</Text>
-        </div>
-      </Card>
-    )
-  }
+   if (!code) {
+     return (
+       <Card title="ER 图预览">
+         <div className="diagram-container">
+           <Text type="secondary">请输入 Mermaid 代码以生成 ER 图</Text>
+         </div>
+       </Card>
+     )
+   }
 
   return (
-    <Card title="ER 图">
+    <Card title="ER 图预览">
       <div 
         ref={diagramRef} 
         className="diagram-container"

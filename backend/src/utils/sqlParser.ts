@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import type { Entity, Column, Relationship, SQLParseResult } from '../types';
+import type { Entity, Column, Relationship, SQLParseResult } from '@shared/types';
 
 export class SQLParser {
   private static extractTableName(statement: string): string | null {
@@ -90,6 +90,12 @@ export class SQLParser {
   }
 
   private static extractDefaultValue(definitionTail: string): string | undefined {
+    // Handle quoted default values first (can contain spaces)
+    const quotedMatch = definitionTail.match(/\bDEFAULT\s+(['"])(.*?)\1/i);
+    if (quotedMatch) {
+      return quotedMatch[2];
+    }
+    // Unquoted or numeric defaults
     const defaultMatch = definitionTail.match(/\bDEFAULT\s+(.+?)(?:\s+(?:NOT\s+NULL|NULL|PRIMARY\s+KEY|UNIQUE|REFERENCES|CHECK|CONSTRAINT)\b|$)/i);
     if (!defaultMatch) return undefined;
     return defaultMatch[1].trim().replace(/,$/, '');
@@ -180,15 +186,15 @@ export class SQLParser {
         const toTable = fkMatch[2];
         const toColumn = fkMatch[3];
         
-        const relationship: Relationship = {
-          id: uuidv4(),
-          from: toTable,  // Referenced table (parent)
-          to: tableName,  // Current table (child)
-          type: 'one-to-many',
-          fromColumn: toColumn,
-          toColumn: fromColumn,
-          name: `${tableName}.${fromColumn} references ${toTable}.${toColumn}`
-        };
+         const relationship: Relationship = {
+           id: uuidv4(),
+           from: toTable,      // Referenced table (parent) is the source
+           to: tableName,      // Current table (child) with FK is the target
+           type: 'one-to-many',
+           fromColumn: toColumn,
+           toColumn: fromColumn,
+           name: `${tableName}.${fromColumn} references ${toTable}.${toColumn}`
+         };
 
         // Determine relationship type based on primary keys
         const parentEntity = entities.find(e => e.name === toTable);
